@@ -20,5 +20,5 @@ pxeboot.o: pxeboot.s
 	$(as) pxeboot.s -o pxeboot.o
 
 pxe.img: pxeboot.o Makefile
-	$(ld) -Ttext 07c00 --oformat binary -o pxe.img pxeboot.o
+	$(ld) -T pxe.ld --oformat binary -o pxe.img pxeboot.o
 
