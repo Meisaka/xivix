@@ -111,6 +111,7 @@ pxepl:	.word 0
 pxepls:	.word 0
 scnp:	.word 0
 dlc:	.word 0
+	.set pktsize, 512
 msgb:	.ascii "meivix"
 kld:	.int 0x100000	# where to load. incremented during loading
 scnb:	.word 0xb800	# screen start segment
@@ -267,7 +268,11 @@ hex16out:  /* output bx as hex 16bits*/
 	call hexnybout
 	mov $0x9C20, %ax
 	stosw
-	mov %di, scnp
+	mov %di, %ax
+	cmp $0xFB3, %ax
+	jl 1f
+	xor %ax, %ax
+1:	mov %ax, scnp
 	pop %es
 	pop %di
 	pop %ds
@@ -400,7 +405,7 @@ gounreal:
 	mov %bx, %es:pxestix+4
 	mov $0x4500, %bx	# set port (BE) and packet size
 	mov %bx, %es:pxestix+138
-	mov $512, %bx
+	mov $pktsize, %bx
 	mov %bx, %es:pxestix+140
 	mov %ax, %ds
 	mov $pxestix+10, %di	# set filename
@@ -441,25 +446,27 @@ pxefail:
 	call chout
 	xor %ax, %ax
 	mov %ax, dlc
-2:	mov pxestix+4, %ax
-	inc %ax
-	shr $1, %ax
-	mov %ax, %cx
+2:	mov pxestix+4, %cx
+	jcxz 4f
 	mov kld, %edi
 	mov $0x1000, %si
-3:	lodsw
-	stosw %ax, %es:(%edi)
+3:	lodsb
+	stosb %al, %es:(%edi)
 	loop 3b
 	mov %edi, kld
 	mov pxestix+4, %ax
-	cmp $512, %ax
+	cmp $pktsize, %ax
 	je 1b
-
+4:
 	mov $pxestix, %di	# close file
 	mov $0x0021, %bx
 	call pxecall
 	mov $0x0200+'K', %bx	# Status 'K'
 	call rmout
+	mov kld+2, %bx
+	call hex16out
+	mov kld, %bx
+	call hex16out
 	1:
 	hlt
 	jmp 1b
