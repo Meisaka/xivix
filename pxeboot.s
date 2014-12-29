@@ -1,6 +1,6 @@
 
 .bss
-gdtsave: .word 0
+memmapc: .word 0
 	.int 0
 gdtnew: .word 0
 	.int 0
@@ -110,19 +110,26 @@ pxeapis: .word 0
 pxepl:	.word 0
 pxepls:	.word 0
 scnp:	.word 0
+scnr:	.word 0
+scnc:	.word 0
 dlc:	.word 0
 	.set pktsize, 512
-msgb:	.ascii "meivix"
-kld:	.int 0x100000	# where to load. incremented during loading
+msgb:	.ascii " xivix"
+	.set kldstart, 0x00100000	# where to load. incremented during loading
+kld:	.int kldstart
 scnb:	.word 0xb800	# screen start segment
-msgf:	.ascii "**BOOT FAIL**"
-msgok:	.ascii "[OK]"
+scnw:	.word 80
+scnh:	.word 25
+msgf:	.asciz "**BOOT FAIL**"
+msgok:	.asciz "[OK]"
+msgerr:	.asciz "[ERR]"
 msgold:	.ascii " PXE LEGACY MODE "
 msgpxe: .ascii "PXENV+"
 msgmorepxe: .ascii "!PXE"
 msga1:	.ascii "A20 OFF "
 msga2:	.ascii "A20 ON  "
 bootfile: .asciz "kernel.img"
+msgmem:	.asciz " getting mem map.."
 
 	nop
 	nop
@@ -192,7 +199,7 @@ strout:
 	pop %ds
 	1:
 	lodsb
-	stosw
+	call scnputc
 	loop 1b
 	push %ds
 	xor %ax, %ax
@@ -214,7 +221,7 @@ chout:
 	mov %ax, %es
 	mov %bl, %al
 	mov $0x14, %ah
-	stosw
+	call scnputc
 	xor %ax, %ax
 	mov %ax, %es
 	mov %di, %es:scnp
@@ -230,12 +237,12 @@ strzout:
 	movw %es:scnp, %di
 	movw %es:scnb, %ax
 	mov %ax, %es
-	mov $0x9c, %ah
+	mov $0x17, %ah
 	1:
 	lodsb
 	and %al, %al
 	jz 1f
-	stosw
+	call scnputc
 	jmp 1b
 	1:
 	xor %ax, %ax
@@ -245,6 +252,43 @@ strzout:
 	pop %si
 	pop %di
 	ret
+scnputc:
+	stosw
+	push %bx
+	mov scnc, %bx
+	inc %bx
+	cmp scnw, %bx
+	jl 2f
+	mov scnr, %bx
+	inc %bx
+	cmp scnh, %bx
+	jl 1f
+	xor %bx, %bx
+1:	mov %bx, scnr
+	xor %bx, %bx
+2:	mov %bx, scnc
+	pop %bx
+	ret
+scnnl:
+	push %ds
+	push %si
+	xor %si, %si
+	mov %si, %ds
+	mov %si, scnc
+	mov scnr, %si
+	inc %si
+	cmp scnh, %si
+	jl 1f
+	xor %si, %si
+1:	mov %si, scnr
+	shl $5, %si
+	mov %si, scnp
+	shl $2, %si
+	add scnp, %si
+	mov %si, scnp
+	pop %si
+	pop %ds
+	ret
 hex16out:  /* output bx as hex 16bits*/
 	push %ds
 	push %di
@@ -253,7 +297,7 @@ hex16out:  /* output bx as hex 16bits*/
 	mov %ax, %ds
 	movw scnp, %di
 	movw scnb, %es
-	mov $0x9c, %ah
+	mov $0x17, %ah
 	mov %bh, %al
 	shr $4, %al
 	call hexnybout
@@ -266,8 +310,6 @@ hex16out:  /* output bx as hex 16bits*/
 	mov %bl, %al
 	and $0xf, %al
 	call hexnybout
-	mov $0x9C20, %ax
-	stosw
 	mov %di, %ax
 	cmp $0xFB3, %ax
 	jl 1f
@@ -283,7 +325,7 @@ hexnybout:
 	add $7, %al
 	1:
 	add $'0', %al
-	stosw
+	call scnputc
 	ret
 
 strchk:
@@ -356,15 +398,6 @@ gounreal:
 	pop %es
 	pop %ds
 	sti
-	mov $0x9E02, %bx
-	mov $0x00B8000, %esi
-	movw %bx, %ds:0(%esi)
-	mov $0x00100000, %esi
-	mov $0x9F02, %bx
-	movw %bx, %ds:0(%esi)
-	movw %ds:0(%esi), %cx
-	mov $0x00B8002, %esi
-	movw %cx, %ds:0(%esi)
 		# now to download!
 	mov $0x0241, %bx	# Status 'A'
 	call rmout
@@ -440,7 +473,7 @@ pxefail:
 	mov dlc, %ax
 	inc %ax
 	mov %ax, dlc
-	cmp $128, %ax
+	cmp $256, %ax		# status markers
 	jl 2f
 	mov $'.', %bl
 	call chout
@@ -448,7 +481,7 @@ pxefail:
 	mov %ax, dlc
 2:	mov pxestix+4, %cx
 	jcxz 4f
-	mov kld, %edi
+	mov kld, %edi		# copy to ext ram
 	mov $0x1000, %si
 3:	lodsb
 	stosb %al, %es:(%edi)
@@ -467,9 +500,97 @@ pxefail:
 	call hex16out
 	mov kld, %bx
 	call hex16out
+	mov $msgmem, %si
+	call strzout
+	call domemmap		# make memory map
+	mov $msgok, %si
+	jnc 1f
+	mov $msgerr, %si
+1:	xor %ax, %ax
+	mov %ax, %ds
+	mov %ax, %es
+	call strzout
+	mov memmapc, %cx
+	call scnnl
+	mov $0x800, %si
+1:
+	mov %ds:6(%si), %bx
+	call hex16out
+	mov %ds:4(%si), %bx
+	call hex16out
+	mov %ds:2(%si), %bx
+	call hex16out
+	mov %ds:0(%si), %bx
+	call hex16out
+	mov $' ', %bl
+	call chout
+	mov %ds:14(%si), %bx
+	call hex16out
+	mov %ds:12(%si), %bx
+	call hex16out
+	mov %ds:10(%si), %bx
+	call hex16out
+	mov %ds:8(%si), %bx
+	call hex16out
+	mov $' ', %bl
+	call chout
+	mov %ds:18(%si), %bx
+	call hex16out
+	mov %ds:16(%si), %bx
+	call hex16out
+	mov $' ', %bl
+	call chout
+	mov %ds:22(%si), %bx
+	call hex16out
+	mov %ds:20(%si), %bx
+	call hex16out
+	call scnnl
+	add $24, %si
+	loop 1b
 	1:
 	hlt
 	jmp 1b
+domemmap:
+	xor %ebx, %ebx
+	mov %bx, %bp
+	mov %bx, %es
+	mov %ebx, %ecx
+	mov $0x800, %di
+	mov $0x534D4150, %edx
+	movl $1, %es:20(%di)
+	mov $0xE820, %eax
+	mov $24, %ecx
+	int $0x15
+	jc 6f
+	mov $0x534D4150, %edx
+	cmp %eax, %edx
+	jne 6f
+	test %ebx, %ebx
+	je 6f
+	jmp 2f
+1:	movl $1, %es:20(%di)
+	mov $0xE820, %eax
+	mov $24, %ecx
+	int $0x15
+	jc 5f
+	mov $0x534D4150, %edx
+2:	jcxz 4f
+	cmp $20, %cl
+	jbe 3f
+	testb $1, %es:20(%di)
+	je 4f
+3:	mov %es:8(%di), %ecx
+	or %es:12(%di), %ecx
+	jz 4f
+	inc %bp
+	add $24, %di
+4:	test %ebx, %ebx
+	jne 1b
+5:	mov %bp, memmapc
+	clc
+	ret
+6:	stc
+	ret	
 rmout:
 	push %si
 	mov $0x00B8002, %esi
