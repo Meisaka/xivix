@@ -8,10 +8,14 @@ objdump := "$(prefix)/i686-elf-objdump"
 objcopy := "$(prefix)/i686-elf-objcopy"
 CXXFLAGS := -std=c++11 -ffreestanding -O2 -Wall -Wextra -fno-rtti -fno-exceptions
 KLINKFLAGS := -ffreestanding -O2 -nostdlib
+ISA := ia32
+
 KSRC := $(shell find ./kernel -name '*.cpp')
-KMAKEBASE := $(patsubst ./kernel/%,./make/%,$(basename $(KSRC)))
-KOBJ := $(addsuffix .o,$(KMAKEBASE))
-KDEP := $(addsuffix .dep,$(KMAKEBASE))
+KASM := $(shell find ./kernel -name '*_$(ISA).s')
+KSRCBASE := $(patsubst ./kernel/%,./make/%,$(basename $(KSRC)))
+KASMBASE := $(patsubst ./kernel/%_$(ISA).s,./make/%,$(KASM))
+KOBJ := $(addsuffix .o,$(KASMBASE)) $(addsuffix .o,$(KSRCBASE))
+KDEP := $(addsuffix .dep,$(KSRCBASE))
 
 .PHONY: dump
 .PHONY: all
@@ -21,7 +25,7 @@ KDEP := $(addsuffix .dep,$(KMAKEBASE))
 all: pxe.img kernel.img
 
 mftest: $(KSRC) 
-	echo $(KSRC) $(KMAKEBASE)
+	echo $(KOBJ) $(KSRCBASE)
 
 mf: $(KOBJ)
 
@@ -41,14 +45,14 @@ make/%.dep: kernel/%.cpp Makefile
 
 include $(KDEP)
 
+make/%.o: kernel/%_$(ISA).s Makefile
+	$(as) $< -o $@
+
 make/%.o: kernel/%.cpp Makefile
 	$(cxx) -c $< -o $@ $(CXXFLAGS)
 
-make/ixkm.o: kernel/ixkm_ia32.s Makefile
-	$(as) $< -o $@
-
-kernel.elf: Makefile krnl.ld make/ixkm.o $(KOBJ)
-	$(cxx) -T krnl.ld -o kernel.elf $(KLINKFLAGS) make/ixkm.o $(KOBJ) -lgcc
+kernel.elf: Makefile krnl.ld $(KOBJ)
+	$(cxx) -T krnl.ld -o kernel.elf $(KLINKFLAGS) $(KOBJ) -lgcc
 
 kernel.img: kernel.elf
 	$(objcopy) -O binary kernel.elf kernel.img
