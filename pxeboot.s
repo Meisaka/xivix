@@ -1,7 +1,8 @@
 
 .bss
 memmapc: .word 0
-	.int 0
+kev:	.int 0
+kevseg:	.word 0
 gdtnew: .word 0
 	.int 0
 pxestix:
@@ -376,6 +377,12 @@ urgdt:	.int 0
 	.byte 0x92
 	.byte 0xCF
 	.byte 0
+	.word 0xffff
+	.word 0
+	.byte 0
+	.byte 0x9A
+	.byte 0xCF
+	.byte 0
 urgdt_end:
 	nop
 gounreal:
@@ -547,9 +554,54 @@ pxefail:
 	call scnnl
 	add $24, %si
 	loop 1b
-	1:
-	hlt
+
+	xor %ax, %ax	# "validate" kernel
+	mov %ax, %ds
+	mov $0xeca70433, %ebx
+	mov $256, %cx
+	mov $kldstart, %esi
+1:	mov %ds:(%esi), %eax
+	add $4, %esi
+	cmp %ebx, %eax
+	je dokernel
+	loop 1b
+	jmp ohwell
+ixentry:
+.int ixprot
+.word 0x10
+dokernel:
+	xor %ecx, %ecx
+	mov %cx, %ds
+	mov %esi, %ds:kev
+	mov $0x10, %ax
+	mov %ax, %ds:kevseg
+1:	dec %ecx
+	cmp %ecx, %ecx
+	jne 1b	
+	mov kev+2, %bx
+	call hex16out
+	mov kev, %bx
+	call hex16out
+	mov $msgok, %si
+	call strzout
+	cli
+	lgdt urgdtptr
+	mov %cr0, %eax
+	or $1, %al
+	mov %eax, %cr0
+	ljmpl *ixentry
+.code32
+ixprot:
+	mov $0x08, %bx
+	mov %bx, %ss
+	mov %bx, %ds
+	mov %bx, %es
+	mov %bx, %gs
+	mov %bx, %fs
+	ljmpl *kev
+1:	hlt
 	jmp 1b
+.code16
 domemmap:
 	xor %ebx, %ebx
 	mov %bx, %bp

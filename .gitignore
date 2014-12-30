@@ -1,5 +1,7 @@
 *~
 *.img
 runtftp.sh
+*.elf
 *.o
 evset.sh
+make
