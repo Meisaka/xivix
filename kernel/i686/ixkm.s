@@ -176,6 +176,18 @@ puthexchar:
 	stosw
 	ret
 
+__cxa_pure_virtual:
+	.global __cxa_pure_virtual
+	push %cs
+	pushf
+	pusha
+	movw $0x0500+'P', %ax
+	movw %ax, 0x000B8086
+	movw $0x0500+'V', %ax
+	movw %ax, 0x000B8088
+	call _iv_regdump
+	cli
+	hlt
 _ive_DE:
 	pusha
 	movw $0x0500+'0', %ax

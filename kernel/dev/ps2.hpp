@@ -2,6 +2,7 @@
 #define PS2_HAI
 
 #include "ktypes.hpp"
+#include "hwtypes.hpp"
 
 namespace hw {
 
@@ -10,9 +11,13 @@ enum class PS2ST : uint32_t {
 	INIT,
 	ECHO,
 	IDLE,
+	BUSY,
 	IDENT,
+	IDENTE,
 	IDENT1,
+	IDENTE1,
 	IDENT2,
+	DISABLE,
 };
 enum class PS2TYPE : uint32_t {
 	QUERY,
@@ -22,14 +27,36 @@ enum class PS2TYPE : uint32_t {
 	MOUSE5,
 };
 
+class Keyboard : public Hardware, public MultiPortClient, public Port {
+private:
+	void key_down();
+	void key_up();
+public:
+	uint32_t state;
+	uint32_t keycode;
+	uint32_t lastkey1;
+	uint32_t lastkey2;
+	uint8_t lastscan;
+
+	Keyboard();
+	~Keyboard();
+
+	bool init() override;
+	void remove() override;
+	void port_data(uint8_t) override;
+	uint32_t port_query() override;
+	void port_send(uint8_t c) override;
+};
+
 struct PS2Port {
 	PS2ST status;
 	PS2TYPE type;
 	uint32_t nextcheck;
 	uint32_t err_c;
+	MultiPortClient *cl_ptr;
 };
 
-class PS2 {
+class PS2 : public Hardware, public MultiPort, public MultiPortService {
 private:
 	uint32_t kmd_q[16];
 	uint32_t kmd_l;
@@ -40,29 +67,39 @@ private:
 	uint8_t ps2_get_read(bool force=false);
 	void push_keycode(uint16_t v);
 	static void send_data(uint8_t v);
+	static void send_adata(uint8_t v);
 	static void send_cmd(uint8_t v);
+	void signal_loss(uint32_t u);
 	bool cinit;
 public:
 	uint32_t err_n;
 	volatile uint8_t icode[4];
 	volatile uint8_t istatus[4];
 	volatile uint32_t interupted;
-	//PS2ST cstatus; // status of controller
+	Keyboard *kb_drv;
 	PS2Port port[4];
 	uint16_t keycode[12];
+	uint16_t keycount;
 
 	static PS2 dev;
 	PS2();
 	~PS2();
 
-	void init(); // setup controller
+	bool init() override; // setup controller
+	void remove() override {}
 	bool waiting(); // wants handle called
 	void handle(); // does stuff
 	static void system_reset(); // reset the whole system
 
 	void init_kbd(uint32_t p); // start a keyboard
-	uint32_t port_query(uint32_t p);
-	void port_send(uint8_t c, uint32_t p);
+	void add_kbd(Keyboard*); // add a keyboard driver
+	void add_client(MultiPortClient*, uint32_t u) override;
+	void remove_client(MultiPortClient*, uint32_t u) override;
+
+	void port_enable(uint32_t p, bool ena);
+	uint32_t port_query(uint32_t p) override;
+	void port_send(uint8_t c, uint32_t p) override;
+	void port_senda(uint8_t c, uint32_t p);
 };
 
 }
