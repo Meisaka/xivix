@@ -34,7 +34,6 @@ size_t strlen(char *p) {
 }
 
 void _kernel_main() {
-	uint32_t i = 0;
 	uint32_t k = 0;
 	uint32_t lim = *((uint16_t*)0x500);
 	VGAText &vga = VGAText::dev;
@@ -42,33 +41,38 @@ void _kernel_main() {
 	hw::PS2 &kbd = hw::PS2::dev;
 	kbd.init();
 	while(true) {
+		vga.setto(51,0);
+		vga.puthex32(_ivix_int_n);
+		vga.setto(51,1);
+		vga.puthex32(k);
+		vga.setto(45,21);
+		vga.puthex32(kbd.err_n);
+		vga.setto(55,20);
+		vga.puthex32(cast<uint32_t>(kbd.port[0].status));
+		vga.setto(65,20);
+		vga.puthex32(cast<uint32_t>(kbd.port[1].status));
+		vga.setto(55,21);
+		vga.puthex32(cast<uint32_t>(kbd.port[0].type));
+		vga.setto(65,21);
+		vga.puthex32(cast<uint32_t>(kbd.port[1].type));
+		vga.setto(55,22);
+		vga.puthex8(kbd.icode[0]);
+		vga.setto(58,22);
+		vga.puthex8(kbd.istatus[0]);
+		vga.setto(61,22);
+		vga.puthex8(kbd.icode[1]);
+		vga.setto(64,22);
+		vga.puthex8(kbd.istatus[1]);
+		vga.setto(55,23);
+		vga.puthex32(kbd.interupted);
 		if(kbd.waiting()) {
 			kbd.handle();
 			k++;
 		}
-		i++;
-		if(i % 15 == 0) {
-			vga.setto(45,18);
-			vga.puthex32(i);
-			vga.setto(45,19);
-			vga.puthex32(_ivix_int_n);
-			vga.setto(45,20);
-			vga.puthex32(k);
-			vga.setto(45,21);
-			vga.puthex32(kbd.err_n);
-			vga.setto(55,21);
-			vga.puthex32(cast<uint32_t>(kbd.cstatus));
-			vga.setto(55,22);
-			vga.puthex8(kbd.icode);
-			vga.setto(58,22);
-			vga.puthex8(kbd.istatus);
-			vga.setto(55,23);
-			vga.puthex32(kbd.interupted);
-			_ix_halt();
-		}
+		_ix_halt();
 	}
 	mmentry *mo = (mmentry*)0x800;
-	for(i = 0; i < lim; i++) {
+	for(uint32_t i = 0; i < lim; i++) {
 		if(mo->type != 1) {
 			mo->type = 2;
 		}

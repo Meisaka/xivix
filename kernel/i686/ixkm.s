@@ -44,6 +44,9 @@ _ivix_int_n:
 _ivix_irq1_fn:
 .int 0
 .global _ivix_irq1_fn
+_ivix_irq12_fn:
+.int 0
+.global _ivix_irq12_fn
 
 .section .ixboot,"x"
 	.int 0xeca70433
@@ -328,7 +331,6 @@ _iv_irq0:
 	iret
 _iv_irq1:
 	pusha
-	call _iv_regdump
 	call _iv_add_n
 	lea _ivix_irq1_fn, %esi
 	mov (%esi), %eax
@@ -413,6 +415,12 @@ _iv_irq11:
 _iv_irq12:
 	pusha
 	call _iv_add_n
+	lea _ivix_irq12_fn, %esi
+	mov (%esi), %eax
+	test %eax, %eax
+	je 1f
+	call *%eax
+	1:
 	mov $12, %al
 	call _iv_irq_eoi
 	popa
