@@ -87,12 +87,45 @@ nbpmain:
 	mov $msgb, %si
 	mov $6, %cx
 	call strout
-	call dota20
+	call tella20		# A20 tests and enable
+	call chka20
 	and %ax, %ax
-	jnz 1f
+	jnz a20good
 	mov $0x2401, %ax
 	int $0x15
-	1:
+	call tella20
+	call chka20
+	and %ax, %ax
+	jnz a20good
+	cli
+	call ps2waitw
+	mov $0xAD, %al	# disable port 1
+	out %al, $0x64
+
+	call ps2waitw
+	mov $0xD0, %al	# read ctrl out port
+	out %al, $0x64
+
+	call ps2waitr
+	in $0x60, %al	# get byte
+	mov %ax, %bx	# save it!
+
+	call ps2waitw
+	mov $0xD1, %al	# write ctrl out port
+	out %al, $0x64
+
+	call ps2waitw
+	mov %bx, %ax	# get saved byte
+	or $2, %al	# set A20 gate
+	out %al, $0x60	# write it
+
+	call ps2waitw
+	mov $0xAE, %al	# re-enable port 1
+	out %al, $0x64
+	call ps2waitw	# wait for it
+	sti
+	call tella20	# what is it now?
+a20good:
 	jmp gounreal
 ohwell:
 	xor %ax, %ax
@@ -143,8 +176,18 @@ pxecall:
 	lcall *pxeapi
 	add $6, %sp
 	ret
+ps2waitr:
+	in $0x64, %al
+	test $1, %al
+	jz ps2waitr
+	ret
+ps2waitw:
+	in $0x64, %al
+	test $2, %al
+	jnz ps2waitw
+	ret
 tella20:
-	call dota20
+	call chka20
 	and %ax, %ax
 	jz 1f
 	mov $msga2, %si
@@ -156,7 +199,7 @@ tella20:
 	mov $8, %cx
 	call strout
 	ret
-dota20:
+chka20:
 	pushf
 	push %ds
 	push %es
@@ -404,7 +447,16 @@ gounreal:
 	mov %eax, %cr0
 	pop %es
 	pop %ds
+	mov $0x100100, %esi	# try write above 1MiB
+	add $2, %esi
+	mov $0x1F01, %ax
+	mov %ax, (%esi)
+	mov $0x0B8000, %edi
+	add $4, %edi
+	mov (%esi), %ax
+	mov %ax, (%edi)
 	sti
+	call showmemmap
 		# now to download!
 	mov $0x0241, %bx	# Status 'A'
 	call rmout
@@ -462,7 +514,7 @@ pxefail:
 	mov $0x0200+'F', %bx	# Status 'F'
 	call rmout
 	jmp ohwell
-1:	mov $0x0200+'D', %bx	# Status 'D'
+1:	mov $0x0200+'d', %bx	# Status 'D'
 	call rmout
 	xor %ax, %ax
 	mov %ax, %ds
@@ -477,6 +529,8 @@ pxefail:
 	call pxecall
 	and %ax, %ax
 	jnz pxefail
+	mov $0x0200+'D', %bx	# Status 'D'
+	call rmout
 	mov dlc, %ax
 	inc %ax
 	mov %ax, dlc
@@ -491,7 +545,7 @@ pxefail:
 	mov kld, %edi		# copy to ext ram
 	mov $0x1000, %si
 3:	lodsb
-	stosb %al, %es:(%edi)
+	stosb %al, (%edi)
 	loop 3b
 	mov %edi, kld
 	mov pxestix+4, %ax
@@ -507,16 +561,30 @@ pxefail:
 	call hex16out
 	mov kld, %bx
 	call hex16out
+	xor %ax, %ax
+	mov %ax, %ds
+	mov %ax, %es
+	call strzout
+
+	xor %ax, %ax	# "validate" kernel
+	mov %ax, %ds
+	mov $0xeca70433, %ebx
+	mov $256, %cx
+	mov $kldstart, %esi
+1:	mov %ds:(%esi), %eax
+	add $4, %esi
+	cmp %ebx, %eax
+	je dokernel
+	loop 1b
+	jmp ohwell
+showmemmap:
 	mov $msgmem, %si
 	call strzout
 	call domemmap		# make memory map
 	mov $msgok, %si
 	jnc 1f
 	mov $msgerr, %si
-1:	xor %ax, %ax
-	mov %ax, %ds
-	mov %ax, %es
-	call strzout
+1:
 	mov memmapc, %cx
 	call scnnl
 	mov $0x800, %si
@@ -554,18 +622,8 @@ pxefail:
 	call scnnl
 	add $24, %si
 	loop 1b
+	ret
 
-	xor %ax, %ax	# "validate" kernel
-	mov %ax, %ds
-	mov $0xeca70433, %ebx
-	mov $256, %cx
-	mov $kldstart, %esi
-1:	mov %ds:(%esi), %eax
-	add $4, %esi
-	cmp %ebx, %eax
-	je dokernel
-	loop 1b
-	jmp ohwell
 ixentry:
 .int ixprot
 .word 0x10

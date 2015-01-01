@@ -1,7 +1,8 @@
 
 .section .initstack
 	.fill 0xffff
-ixstk:	.byte 0
+.align 16
+ixstk:
 
 .data
 
@@ -40,6 +41,9 @@ _ivix_int_n:
 .global _ivix_int_n
 .int 0
 
+_ivix_irq1_fn:
+.int 0
+.global _ivix_irq1_fn
 
 .section .ixboot,"x"
 	.int 0xeca70433
@@ -49,9 +53,16 @@ _ix_entry:
 	call _ix_makeidt
 	lidt _ivix_idt_ptr
 	call _ix_initpic
+
+	sub $0xc, %esp
+	call _ix_construct
 	sti
 	call _kernel_main
 	jmp _ix_halt
+
+.section .ctors.begin
+.int 0xffffffff
+.section .ctors.end
 
 .text
 _iv_regdump:
@@ -98,6 +109,30 @@ _iv_regdump:
 	inc %ebx
 	movl %ebx, _ivix_dump_n
 	call puthex32
+	add $68, %edi
+	call putzstr
+	movl 0x10(%esp), %esi	# ESP
+	mov $32, %edx
+	add $56, %edi
+2:	and %edx, %edx
+	je 3f
+	add $66, %edi
+	mov %esi, %ebx
+	call puthex32
+	add $6, %edi
+1:	mov 0(%esi), %ebx
+	call puthex32
+	add $2, %edi
+	add $4, %esi
+	sub $1, %edx
+	test $3, %dx
+	je 2b
+	and %edx, %edx
+	jne 1b
+3:
+	add $66, %edi
+	mov _ivix_irq1_fn, %ebx
+	call puthex32
 	ret
 rdumpnames:
 	.asciz " EAX="
@@ -112,6 +147,7 @@ rdumpnames:
 	.asciz "  CS="
 	.asciz " FLG="
 	.asciz "  N ="
+	.asciz " *STACK* "
 puthex32:
 	movw $0x5F00, %ax
 	mov $8, %ecx
@@ -184,6 +220,8 @@ _ive_UD:
 	call _iv_regdump
 	movw $0x1C00+'6', %ax
 	movw %ax, 0x000B8082
+	cli
+	hlt
 	popa
 	iret
 _ive_NM:
@@ -235,6 +273,8 @@ _ive_GP:
 	call _iv_regdump
 	movw $0x1C00+'G', %ax
 	movw %ax, 0x000B8082
+	cli
+	hlt
 	popa
 	iret
 _ive_PF:
@@ -288,7 +328,14 @@ _iv_irq0:
 	iret
 _iv_irq1:
 	pusha
+	call _iv_regdump
 	call _iv_add_n
+	lea _ivix_irq1_fn, %esi
+	mov (%esi), %eax
+	test %eax, %eax
+	je 1f
+	call *%eax
+	1:
 	mov $1, %al
 	call _iv_irq_eoi
 	popa
@@ -419,6 +466,54 @@ _iv_noise:
 _iv_nothing:
 	iret
 
+_ix_outb:
+	.global _ix_outb
+	.type _ix_outb,@function
+	mov 4(%esp), %edx
+	mov 8(%esp), %eax
+	outb %al, %dx
+	ret
+
+_ix_outw:
+	.global _ix_outw
+	.type _ix_outw,@function
+	mov 4(%esp), %edx
+	mov 8(%esp), %eax
+	outw %ax, %dx
+	ret
+
+_ix_outl:
+	.global _ix_outl
+	.type _ix_outl,@function
+	mov 4(%esp), %edx
+	mov 8(%esp), %eax
+	outl %eax, %dx
+	ret
+
+_ix_inb:
+	.global _ix_inb
+	.type _ix_inb,@function
+	mov 4(%esp), %edx
+	xor %eax, %eax
+	inb %dx, %al
+	ret
+
+_ix_inw:
+	.global _ix_inw
+	.type _ix_inw,@function
+	mov 4(%esp), %edx
+	xor %eax, %eax
+	inw %dx, %ax
+	ret
+
+_ix_inl:
+	.global _ix_inl
+	.type _ix_inl,@function
+	mov 4(%esp), %edx
+	xor %eax, %eax
+	inl %dx, %eax
+	ret
+
 _ix_makeidt:
 	movl $_ivix_idt, %edi
 	movl $_ivix_itb, %edx
@@ -442,6 +537,16 @@ _ix_makeidt:
 	loop 2b
 	dec %ebx
 	and %ebx, %ebx
+	jne 1b
+	ret
+
+_ix_construct:
+	mov $.ctors.end - 4, %ebx
+	jmp 2f
+1:	sub $4, %ebx
+	call *%eax
+2:	mov (%ebx), %eax
+	cmp $0xffffffff, %eax
 	jne 1b
 	ret
 

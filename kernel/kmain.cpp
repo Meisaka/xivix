@@ -1,6 +1,8 @@
 
 #include "ktypes.hpp"
-#include "vgatext.hpp"
+#include "kio.hpp"
+#include "dev/vgatext.hpp"
+#include "dev/ps2.hpp"
 
 struct mmentry {
 	uint64_t start;
@@ -10,11 +12,6 @@ struct mmentry {
 };
 
 extern "C" {
-void _ix_halt();
-void _ix_totalhalt();
-void _ix_req();
-void _ix_reqr();
-extern volatile uint32_t _ivix_int_n;
 
 void* malloc(size_t v) {
 	if(v < 1) {
@@ -38,18 +35,35 @@ size_t strlen(char *p) {
 
 void _kernel_main() {
 	uint32_t i = 0;
+	uint32_t k = 0;
 	uint32_t lim = *((uint16_t*)0x500);
-	VGAText vga;
-	vga.putstr("Ixivix Kernel says hello! ");
-	vga.puthex32(0xfedc9876);
+	VGAText &vga = VGAText::dev;
+	vga.putstr("Ixivix hello! ");
+	hw::PS2 &kbd = hw::PS2::dev;
+	kbd.init();
 	while(true) {
+		if(kbd.waiting()) {
+			kbd.handle();
+			k++;
+		}
 		i++;
-		if(i % 900000 == 0) {
+		if(i % 15 == 0) {
 			vga.setto(45,18);
 			vga.puthex32(i);
 			vga.setto(45,19);
 			vga.puthex32(_ivix_int_n);
-			vga.putat(50,20,'#');
+			vga.setto(45,20);
+			vga.puthex32(k);
+			vga.setto(45,21);
+			vga.puthex32(kbd.err_n);
+			vga.setto(55,21);
+			vga.puthex32(cast<uint32_t>(kbd.cstatus));
+			vga.setto(55,22);
+			vga.puthex8(kbd.icode);
+			vga.setto(58,22);
+			vga.puthex8(kbd.istatus);
+			vga.setto(55,23);
+			vga.puthex32(kbd.interupted);
 			_ix_halt();
 		}
 	}

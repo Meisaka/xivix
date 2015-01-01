@@ -12,6 +12,11 @@ SECTIONS {
 	.data : ALIGN(4K) {
 		*(.data)
 	}
+	.ctors : ALIGN(4K) {
+		*(.ctors.begin)
+		*(.ctors)
+		*(.ctors.end)
+	}
 	.bss (NOLOAD) : ALIGN(4K) {
 		*(COMMON)
 		*(.bss)
