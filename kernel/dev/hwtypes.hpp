@@ -18,6 +18,8 @@ struct Port {
 };
 struct MultiPortClient;
 struct MultiPortService {
+	virtual void client_send(uint32_t d, uint32_t u) = 0;
+	virtual uint32_t client_req(uint32_t u) = 0;
 	virtual void add_client(MultiPortClient*, uint32_t u) = 0;
 	virtual void remove_client(MultiPortClient*, uint32_t u) = 0;
 };

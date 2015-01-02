@@ -31,12 +31,24 @@ class Keyboard : public Hardware, public MultiPortClient, public Port {
 private:
 	void key_down();
 	void key_up();
+	void init_proc();
+	uint8_t kbd_cmd(uint8_t v);
+	void kbd_data(uint8_t v);
+	uint32_t keybuf[16];
+	uint32_t keyev;
+	uint32_t istate;
 public:
 	uint32_t state;
 	uint32_t keycode;
 	uint32_t lastkey1;
 	uint32_t lastkey2;
 	uint8_t lastscan;
+
+	uint32_t mods;
+
+	void push_key(uint32_t);
+	uint32_t pop_key();
+	bool has_key();
 
 	Keyboard();
 	~Keyboard();
@@ -64,7 +76,7 @@ private:
 	static void irq12_signal();
 	void irq1_handle();
 	void irq12_handle();
-	uint8_t ps2_get_read(bool force=false);
+	uint8_t ps2_get_read();
 	void push_keycode(uint16_t v);
 	static void send_data(uint8_t v);
 	static void send_adata(uint8_t v);
@@ -93,6 +105,12 @@ public:
 
 	void init_kbd(uint32_t p); // start a keyboard
 	void add_kbd(Keyboard*); // add a keyboard driver
+	void client_send(uint32_t v, uint32_t u) override {
+		port_send(cast<uint8_t>(v), u);
+	}
+	uint32_t client_req(uint32_t u) override {
+		return port_query(u);
+	}
 	void add_client(MultiPortClient*, uint32_t u) override;
 	void remove_client(MultiPortClient*, uint32_t u) override;
 

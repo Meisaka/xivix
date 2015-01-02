@@ -53,6 +53,7 @@ void _kernel_main() {
 	uint32_t k = 0;
 	uint32_t lim = *((uint16_t*)0x500);
 	VGAText &vga = VGAText::dev;
+	VGAText *lvga = new VGAText();
 	vga.putstr("Ixivix hello! ");
 	int *q = new int[400];
 	int *qq = new int;
@@ -63,6 +64,7 @@ void _kernel_main() {
 	psys.add_kbd(kb1);
 	psys.init();
 	while(true) {
+		/*
 		vga.setto(65,10);
 		vga.puthex32(kb1->state);
 		vga.setto(65,11);
@@ -71,6 +73,8 @@ void _kernel_main() {
 		vga.puthex32(kb1->lastkey2);
 		vga.setto(65,13);
 		vga.puthex8(kb1->lastscan);
+		vga.putc(' ');
+		vga.puthex32(kb1->mods);
 		vga.setto(65,14);
 		vga.puthex32(reinterpret_cast<uint32_t>(psys.kb_drv));
 		vga.setto(65,15);
@@ -79,12 +83,16 @@ void _kernel_main() {
 		vga.puthex32(reinterpret_cast<uint32_t>(psys.port[1].cl_ptr));
 		vga.setto(65,17);
 		vga.puthex32(reinterpret_cast<uint32_t>(kb1->mp_serv));
+		// */
 		vga.setto(51,0);
 		vga.puthex32(_ivix_int_n);
 		vga.setto(51,1);
 		vga.puthex32(k);
+		vga.puthex32(psys.interupted);
+		vga.puthex32(psys.keycount);
 		vga.setto(45,21);
 		vga.puthex32(psys.err_n);
+		/*
 		vga.setto(55,20);
 		vga.puthex32(cast<uint32_t>(psys.port[0].status));
 		vga.setto(65,20);
@@ -103,11 +111,18 @@ void _kernel_main() {
 		vga.puthex8(psys.istatus[1]);
 		vga.setto(55,23);
 		vga.puthex32(psys.interupted);
+		// */
+		psys.handle();
 		if(psys.waiting()) {
 			psys.handle();
 			k++;
+		} else {
+			_ix_halt();
 		}
-		_ix_halt();
+		if(kb1->has_key()) {
+			uint32_t k = kb1->pop_key();
+			lvga->putc(cast<char>(k));
+		}
 	}
 	mmentry *mo = (mmentry*)0x800;
 	for(uint32_t i = 0; i < lim; i++) {
