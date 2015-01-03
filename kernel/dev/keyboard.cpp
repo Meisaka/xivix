@@ -1,7 +1,7 @@
 
-#include "vgatext.hpp"
 #include "ps2.hpp"
 #include "kio.hpp"
+#include "ktext.hpp"
 
 namespace hw {
 
@@ -22,7 +22,7 @@ void Keyboard::push_key(uint32_t k) {
 }
 uint32_t Keyboard::pop_key() {
 	if(keyev > 0) {
-		return keybuf[keyev--];
+		return keybuf[--keyev];
 	} else {
 		return 0;
 	}
@@ -61,21 +61,24 @@ bool Keyboard::init() {
 	if(!mp_serv) return false;
 	uint32_t es = 0;
 	if(kbd_cmd(0xff) != 0xAA) es++;
-	kbd_data(0xed);// set code set ...
-	if(kbd_cmd(0x07) != 0xFA) es++; // setled ...
-	kbd_data(0xf0);// get code set ...
+	kbd_data(0xed); // setled ...
+	if(kbd_cmd(0x07) != 0xFA) es++;
+	kbd_data(0xf0); // set code set ...
 	if(kbd_cmd(0x02) != 0xFA) es++;
-	kbd_data(0xf0);
+	/*
+	kbd_data(0xf0); // get code set ...
 	if(kbd_cmd(0x00) != 0xFA) es++;
 	if(es > 3) {
 		return false;
 	}
 	mp_serv->client_req(mp_port);
+	*/
 	kbd_data(0xf3);// set rate ...
 	if(kbd_cmd(0x02) != 0xFA) es++;
 	if(kbd_cmd(0xf4) != 0xFA) es++;// scan
 	kbd_data(0xed);// setled ...
 	if(kbd_cmd(0x03) != 0xFA) es++;
+	xiv::print("Keyboard: init success\n");
 	return true;
 }
 
@@ -108,11 +111,6 @@ void Keyboard::key_down() {
 	case 0x2002f:
 		mods |= 0x100;
 		break;
-	}
-	if( ((mods & 0x30) != 0) && ((mods & 0xC) != 0) ) {
-		VGAText::dev.setto(1,17);
-		VGAText::dev.putstr("SYSTEM REQ ");
-		VGAText::dev.puthex32(keycode);
 	}
 	push_key(keycode);
 	lastkey1 = keycode;
@@ -148,15 +146,12 @@ void Keyboard::key_up() {
 		mods ^= mods & 0x100;
 		break;
 	}
+	push_key(keycode);
 	if( ((mods & 0x30) != 0) && ((mods & 0xC) != 0) ) {
-		VGAText::dev.setto(1,17);
-		VGAText::dev.putstr("SYSTEM REQ ");
-		VGAText::dev.puthex32(keycode);
 		if(keycode == 0x30071) {
-			PS2::system_reset();
+			PS2::system_reset(); // ctrl+alt+del to reset some systems
 		}
 	}
-	push_key(keycode);
 	lastkey2 = lastkey1;
 	lastkey1 = keycode;
 }
@@ -165,6 +160,7 @@ void Keyboard::remove() {
 	mods = 0;
 	state = 0;
 	keyev = 0;
+	xiv::print("Keyboard: remove\n");
 }
 void Keyboard::port_data(uint8_t c) {
 	lastscan = c;
@@ -248,11 +244,6 @@ void Keyboard::port_data(uint8_t c) {
 		key_up();
 		return;
 	}
-}
-uint32_t Keyboard::port_query() {
-	return ~0u;
-}
-void Keyboard::port_send(uint8_t c) {
 }
 
 } // hw

@@ -147,6 +147,8 @@ scnp:	.word 0
 scnr:	.word 0
 scnc:	.word 0
 dlc:	.word 0
+favmode: .word 0xffff
+favtype: .word 0
 	.set pktsize, 512
 msgb:	.ascii " xivix"
 	.set kldstart, 0x00100000	# where to load. incremented during loading
@@ -164,6 +166,7 @@ msga1:	.ascii "A20 OFF "
 msga2:	.ascii "A20 ON  "
 bootfile: .asciz "kernel.img"
 msgmem:	.asciz " getting mem map.."
+modemsg: .asciz "preferred video mode: "
 
 	nop
 	nop
@@ -642,6 +645,7 @@ dokernel:
 	call hex16out
 	mov $msgok, %si
 	call strzout
+	call dovbe
 	cli
 	lgdt urgdtptr
 	mov %cr0, %eax
@@ -660,6 +664,234 @@ ixprot:
 1:	hlt
 	jmp 1b
 .code16
+vbe:	.ascii "VBE2"
+vesa:	.ascii "VESA"
+dovbe:
+	xor %ax, %ax
+	mov %ax, %es
+	mov $0x1000, %di
+	mov vbe, %ax
+	mov %ax, (%di)
+	mov vbe+2, %ax
+	mov %ax, 2(%di)
+	mov $0x4F00, %ax
+	int $0x10
+	cmp $0x004F, %ax	# get info blk ok?
+	je 1f
+	ret
+1:
+	call scnnl
+	mov %di, %si
+	xor %ax, %ax
+	mov %ax, %ds
+	mov %ax, %es
+	mov %es:0(%di), %ax
+	cmp %ax, vesa
+	je 1f
+	ret
+1:	mov %es:2(%di), %ax
+	cmp %ax, vesa+2
+	je 1f
+	ret
+1:
+	mov $4, %cx
+	call strout
+	call scnnl
+	mov $4, %cx
+	mov %es:4(%di), %bx
+	call hex16out
+	call scnnl
+	mov %es:6(%di), %bx
+	mov %bx, %si
+	mov %es:8(%di), %bx
+	push %ds
+	mov %bx, %ds
+	call strzout
+	pop %ds
+	call scnnl
+	mov %es:10(%di), %bx
+	call hex16out
+	mov $' ', %bl
+	call chout
+	mov %es:12(%di), %bx
+	call hex16out
+	mov $' ', %bl
+	call chout
+	
+	mov $4, %cx
+	add $14, %di
+1:
+	mov %es:0(%di), %bx
+	call hex16out
+	mov $'-', %bl
+	call chout
+	add $2, %di
+	loop 1b
+	call scnnl
+	mov $3, %cx
+1:
+	mov %es:0(%di), %bx
+	call hex16out
+	mov %bx, %si
+	mov %es:2(%di), %bx
+	call hex16out
+	mov %bx, %ds
+	call strzout
+	call scnnl
+	add $4, %di
+	loop 1b
+	xor %ax, %ax
+	mov %ax, %ds
+	mov %ax, %es
+	mov $0x1000, %si	# info block
+	mov $0x1200, %di	# mode info
+	mov 14(%si), %ax
+	mov 16(%si), %bx
+	mov %ax, %si
+	mov %bx, %ds
+modeloop:
+	mov 0(%si), %cx		# display modes
+	cmp $0xffff, %cx
+	je modelexit
+	mov $0x4F01, %ax
+	int $0x10
+	cmp $0x004F, %ax	# get mode info
+	jne modelexit
+	mov %es:0(%di), %bx	# color mode and min res check
+	test $0x10, %bx
+	jz modeskip
+	mov %es:18(%di), %bx	# Xres
+	cmp $1024, %bx
+	jl modeskip
+	mov %es:20(%di), %bx	# Yres
+	cmp $768, %bx
+	jl modeskip
+	mov %es:0(%di), %bx
+	call hex16out
+	mov $' ', %bl
+	call chout
+	mov %es:18(%di), %bx	# Xres
+	call hex16out
+	mov $' ', %bl
+	call chout
+	mov %es:20(%di), %bx	# Yres
+	call hex16out
+	mov $' ', %bl
+	call chout
+	mov %es:22(%di), %bx	# charsize Y:X
+	call hex16out
+	mov $' ', %bl
+	call chout
+	mov %es:24(%di), %bx	# bpp:planes
+	call hex16out
+	mov $' ', %bl
+	call chout
+	mov %es:26(%di), %bx	# model:banks
+	call hex16out
+	mov $' ', %bl
+	call chout
+	mov %es:28(%di), %bx	# bank sz:n-images
+	call hex16out
+	mov $' ', %bl
+	call chout
+	mov %es:42(%di), %bx
+	call hex16out
+	mov %es:40(%di), %bx	# 40:42 phys base flat
+	call hex16out
+	mov $' ', %bl
+	call chout
+	mov %es:50(%di), %bx
+	call hex16out
+
+	# preferred mode selection
+	mov %es:18(%di), %bx	# Xres
+	cmp $1024, %bx
+	je vmode1024
+	cmp $1280, %bx
+	je vmode1280
+	cmp $1600, %bx	# mode "1600"
+	jne modeend
+	mov %es:20(%di), %bx	# Yres
+	cmp $1200, %bx
+	jne modeend
+	mov %es:24(%di), %bx	# bpp:planes
+	mov $0x22, %ax
+	cmp $0x2001, %bx	# 1600x1200 @32 (most preferred)
+	je vbepickmode
+	mov $0x21, %ax
+	cmp $0x1001, %bx	# 1600x1200 @16	(favor of size over depth)
+	je vbepickmode
+	jmp modeend
+vmode1024:
+	mov %es:20(%di), %bx	# Yres
+	cmp $768, %bx
+	jne modeend	# make sure we want this one
+	mov %es:24(%di), %bx	# bpp:planes
+	mov $0x02, %ax
+	cmp $0x2001, %bx	# 1024x768 @32
+	je vbepickmode
+	mov $0x01, %ax
+	cmp $0x1001, %bx	# 1024x768 @16 (minimum)
+	je vbepickmode
+	jmp modeend
+vmode1280:
+	mov %es:20(%di), %bx	# Yres
+	cmp $1024, %bx
+	jne modeend
+	mov %es:24(%di), %bx	# bpp:planes
+	mov $0x12, %ax
+	cmp $0x2001, %bx	# 1280x1024 @32
+	je vbepickmode
+	mov $0x11, %ax
+	cmp $0x1001, %bx	# 1280x1024 @16
+	je vbepickmode
+	#jmp modeend	# at end already
+modeend:
+	mov $'%', %bl
+	call chout
+	mov %cx, %bx
+	call hex16out
+	mov $'%', %bl
+	call chout
+	call scnnl
+modeskip:
+	add $2, %si
+	jmp modeloop
+modelexit:
+	xor %ax, %ax
+	mov %ax, %ds
+	mov $modemsg, %si
+	call strzout
+	mov favmode, %bx
+	call hex16out
+	mov favtype, %bx
+	call hex16out
+	mov favmode, %cx
+	cmp $0xffff, %cx
+	jne vbesetmode
+	xor %ax, %ax
+	mov %ax, %ds
+	mov %ax, %es
+	ret
+vbepickmode:
+	cmp favtype, %ax
+	jl modeend
+	mov %cx, %es:favmode
+	mov %ax, %es:favtype
+	jmp modeend
+
+vbesetmode:
+	mov $0x4F01, %ax	# get info about it
+	int $0x10
+	mov %cx, %bx
+	#and $0x1ff, %bx
+	or $0x4000, %bx
+	mov $0x4F02, %ax	# set it
+	int $0x10
+	xor %ax, %ax
+	mov %ax, %ds
+	mov %ax, %es
+	ret
 domemmap:
 	xor %ebx, %ebx
 	mov %bx, %bp

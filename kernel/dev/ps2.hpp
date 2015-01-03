@@ -27,7 +27,7 @@ enum class PS2TYPE : uint32_t {
 	MOUSE5,
 };
 
-class Keyboard : public Hardware, public MultiPortClient, public Port {
+class Keyboard : public Hardware, public MultiPortClient {
 private:
 	void key_down();
 	void key_up();
@@ -56,8 +56,6 @@ public:
 	bool init() override;
 	void remove() override;
 	void port_data(uint8_t) override;
-	uint32_t port_query() override;
-	void port_send(uint8_t c) override;
 };
 
 struct PS2Port {

@@ -2,25 +2,27 @@
 #define VGATEXT_HAI
 
 #include "ktypes.hpp"
+#include "textio.hpp"
 
-class VGAText final {
+class VGAText final : public xiv::TextIO {
 private:
-	constexpr static uint16_t *vgabase = (uint16_t*)0xB8000;
 	uint16_t col;
 	uint16_t row;
 	uint16_t height;
 	uint16_t width;
+	uint16_t attrib;
 public:
-	static VGAText dev;
 	VGAText();
 	~VGAText();
+	void setfg(uint8_t clr);
+	void setbg(uint8_t clr);
+	void setattrib(uint8_t clr);
 	void setto(uint16_t c, uint16_t r);
+	uint16_t getrow() const { return row; }
+	uint16_t getcol() const { return col; }
 	void putc(char c);
 	void putat(uint16_t c, uint16_t r, char v);
-	void putstr(const char* s);
-	void puthex32(uint32_t v);
-	void puthex16(uint32_t v);
-	void puthex8(uint32_t v);
+	void nextline();
 };
 
 #endif

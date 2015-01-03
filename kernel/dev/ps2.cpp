@@ -1,6 +1,7 @@
 
 #include "ps2.hpp"
 #include "kio.hpp"
+#include "ktext.hpp"
 
 extern "C" {
 
@@ -138,6 +139,7 @@ bool PS2::init() {
 	uint8_t c, t;
 	err_n &= 0xF777;
 	cinit = false;
+	xiv::print("PS2: init\n");
 	if(!(err_n & 0x4)) {
 		send_cmd(0xAD); // port 1 dis
 		send_cmd(0xA7); // port 2 dis
@@ -146,6 +148,7 @@ bool PS2::init() {
 		t = ps2_get_read();
 		if(t != 0x55) {
 			err_n |= 0x8;
+			xiv::print("PS2: controllor test fail\n");
 			return false;
 		}
 		err_n |= 0x4;
@@ -163,6 +166,7 @@ bool PS2::init() {
 	t = ps2_get_read();
 	if(t != 0) {
 		err_n |= 0x80;
+		xiv::print("PS2: port 1 test fail\n");
 		return false;
 	}
 
@@ -170,6 +174,7 @@ bool PS2::init() {
 	ps2_wait_fwrite();
 	t = ps2_get_read();
 	if(t != 0) {
+		xiv::print("PS2: port 2 test fail\n");
 		err_n |= 0x800;
 	}
 	if(err_n & 0x088) return false;
@@ -203,6 +208,7 @@ bool PS2::init() {
 	if(interupted & 2) {
 		err_n |= 0x200;
 	} else {
+		xiv::print("PS2: port 2 interupts fail - disabling\n");
 		port[1].status = PS2ST::DISABLE;
 	}
 	}
@@ -301,6 +307,7 @@ void PS2::handle() {
 			if(c == 0xFE) {
 				if(istatus[i] & 0xC0) port[i].err_c++;
 				if(port[i].err_c > 3) {
+					xiv::printf("PS2: port %d echo lost\n", i+1);
 					port[i].status = PS2ST::LOST;
 					signal_loss(i);
 					port[i].type = PS2TYPE::QUERY;
@@ -354,6 +361,7 @@ void PS2::handle() {
 			} else if(c == 0xABu) {
 				nextst = id1st;
 			} else if(c == 0xFEu) {
+				dettype = PS2TYPE::QUERY;
 				nextst = PS2ST::LOST;
 			} else if(c == 0xFAu) {
 				nextst = idst;
@@ -364,10 +372,11 @@ void PS2::handle() {
 			}
 			if(dettype != port[i].type) {
 				port[i].type = dettype;
-				port[i].status = PS2ST::INIT;
-			} else {
-				port[i].status = nextst;
+				if(nextst == PS2ST::LOST) {
+					xiv::printf("PS2: port %d ident err - lost\n", i+1);
+				}
 			}
+			port[i].status = nextst;
 			}
 			break;
 		case PS2ST::IDENT1:
@@ -400,13 +409,16 @@ void PS2::handle() {
 			case PS2TYPE::MOUSE3:
 			case PS2TYPE::MOUSE4:
 			case PS2TYPE::MOUSE5:
+				xiv::printf("PS2: port %d init as mouse\n", i+1);
 				port[i].status = PS2ST::IDLE;
 				break;
 			case PS2TYPE::KEYBOARD:
+				xiv::printf("PS2: port %d init as keyboard\n", i+1);
 				init_kbd(i);
 				port[i].type = PS2TYPE::KEYBOARD;
 				break;
 			default:
+				xiv::printf("PS2: port %d init unknown - querying\n", i+1);
 				port[i].type = PS2TYPE::QUERY;
 				port[i].status = PS2ST::IDENT;
 				if(ps2_can_write()) {
@@ -448,6 +460,7 @@ void PS2::handle() {
 				port[i].type = PS2TYPE::KEYBOARD;
 				break;
 			case PS2ST::IDENT2:
+				xiv::printf("PS2: port %d IDENT2 timeout\n", i+1);
 				port[i].nextcheck = _ivix_int_n + 100;
 				port[i].status = PS2ST::LOST;
 				break;
@@ -460,10 +473,13 @@ void PS2::handle() {
 void PS2::port_enable(uint32_t u, bool e) {
 	if(u > 1) return;
 	if(e) {
-		if(port[u].status == PS2ST::DISABLE)
+		if(port[u].status == PS2ST::DISABLE) {
+			xiv::printf("PS2: port %d enabled\n", u+1);		
 			port[u].status = PS2ST::LOST;
+		}
 	} else {
 		port[u].status = PS2ST::DISABLE;
+		xiv::printf("PS2: port %d disabled\n", u+1);		
 	}
 }
 uint32_t PS2::port_query(uint32_t p) {
