@@ -81,7 +81,6 @@ void PS2::push_keycode(uint16_t v) {
 }
 
 uint8_t PS2::ps2_get_read() {
-	uint32_t d = _ivix_int_n + 2000;
 	while( !(_ix_inb(0x64) & 1) ) {
 	}
 	uint8_t r = _ix_inb(0x60);
@@ -496,16 +495,16 @@ uint32_t PS2::port_query(uint32_t p) {
 	} else {
 		for(int i = keycount>12?12:keycount; i > 0; ) {
 			i--;
-			if((keycode[i] >> 8) == p) {
+			if(cast<uint32_t>(keycode[i] >> 8) == p) {
 				uint32_t k = keycode[i];
 				for(; i < keycount - 1; i++) {
 					keycode[i] = keycode[i+1];
 				}
 				keycount--;
+				interupted ^= interupted & (1 << p);
 				return k;
 			}
 		}
-		uint32_t f = 1 << p;
 	}
 	return ~0u;
 }

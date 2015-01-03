@@ -5,6 +5,7 @@
 #include <stddef.h>
 
 #define cast static_cast
+#define recast reinterpret_cast
 
 #endif
 

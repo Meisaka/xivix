@@ -41,30 +41,38 @@ clear: $(KCLEAR)
 	rm -f $(KCLEAR)
 
 dump: pxe.img
-	$(objdump) -D -b binary -m i8086 pxe.img | less
+	@echo "[OBJDUMP]"; $(objdump) -D -b binary -m i8086 pxe.img | less
 
 pxeboot.o: pxeboot.s
-	$(as) pxeboot.s -o pxeboot.o
+	@echo "[AS PXE ] "; $(as) pxeboot.s -o pxeboot.o
 
 pxe.img: pxeboot.o pxe.ld
-	$(ld) -T pxe.ld --oformat binary -o pxe.img pxeboot.o
+	@echo "[LD PXE ] "; $(ld) -T pxe.ld --oformat binary -o pxe.img pxeboot.o
 
 make/%.dep: kernel/%.cpp Makefile
-	@echo Checkdep $@ $*
+	@echo '|DEP C++|' $@ $*
 	@set -e; rm -f $@; \
 		$(cxx) -MM $< $(CXXFLAGS) | sed 's,\($*\)\.o[ :]*,make/\1\.o $@ : ,g' > $@
+
+make/%.dep: kernel/%.c Makefile
+	@echo '|DEP C  | ' $@ $*
+	@set -e; rm -f $@; \
+		$(cc) -MM $< $(CXXFLAGS) | sed 's,\($*\)\.o[ :]*,make/\1\.o $@ : ,g' > $@
 
 include $(KDEP)
 
 make/%.o: kernel/%.s Makefile
-	$(as) $< -o $@
+	@echo "|AS     | $<"; $(as) $< -o $@
+
+make/%.o: kernel/%.c Makefile
+	@echo "|CC     | $<"; $(cc) -c $< -o $@ $(CFLAGS)
 
 make/%.o: kernel/%.cpp Makefile
-	$(cxx) -c $< -o $@ $(CXXFLAGS)
+	@echo "|C++    | $<"; $(cxx) -c $< -o $@ $(CXXFLAGS)
 
 kernel.elf: Makefile krnl.ld $(KOBJ) mf
-	$(cxx) -T krnl.ld -o kernel.elf $(KLINKFLAGS) $(KOBJ) -lgcc
+	@echo "[LINK   ] kernel.elf"; $(cxx) -T krnl.ld -o kernel.elf $(KLINKFLAGS) $(KOBJ) -lgcc
 
 kernel.img: kernel.elf
-	$(objcopy) -O binary kernel.elf kernel.img
+	@echo "[OBJCOPY] kernel"; $(objcopy) -O binary kernel.elf kernel.img
 

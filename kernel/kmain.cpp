@@ -88,7 +88,7 @@ void printdec(uint32_t d) {
 
 void printhex(uint32_t v) {
 	int i;
-	for(i = 32; i > 4 && ((v >> i) & 0x0f) == 0; i-=4); // get digit length
+	for(i = 32; i > 4 && ((v >> (i-4)) & 0x0f) == 0; i-=4); // get digit length
 	do {
 		i -= 4;
 		char c = (v >> i) & 0x0f;
@@ -363,7 +363,6 @@ void _kernel_main() {
 			busy = true;
 			uint32_t k = kb1->pop_key();
 			uint8_t ch = mapchar(k, kb1->mods);
-			uint16_t tmp;
 			if(ch) {
 				if(ch == 10) {
 				fbt->putat(fbt->getcol(), fbt->getrow(), ' ');
