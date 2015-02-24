@@ -178,7 +178,7 @@ puthexchar:
 	ret
 
 __cxa_pure_virtual:
-	.global __cxa_pure_virtual
+.global __cxa_pure_virtual
 	push %cs
 	pushf
 	pusha
@@ -190,6 +190,7 @@ __cxa_pure_virtual:
 	cli
 	hlt
 _ive_DE:
+.global _ive_DE
 	pusha
 	movw $0x0500+'0', %ax
 	movw %ax, 0x000B8082
@@ -197,6 +198,7 @@ _ive_DE:
 	popa
 	iret
 _ive_DB:
+.global _ive_DB
 	pusha
 	call _iv_regdump
 	movw $0x1C00+'1', %ax
@@ -204,6 +206,7 @@ _ive_DB:
 	popa
 	iret
 _ive_X2:
+.global _ive_X2
 	pusha
 	call _iv_regdump
 	movw $0x1C00+'2', %ax
@@ -211,6 +214,7 @@ _ive_X2:
 	popa
 	iret
 _ive_BP:
+.global _ive_BP
 	pusha
 	call _iv_regdump
 	movw $0x1C00+'3', %ax
@@ -218,6 +222,7 @@ _ive_BP:
 	popa
 	iret
 _ive_OF:
+.global _ive_OF
 	pusha
 	call _iv_regdump
 	movw $0x1C00+'4', %ax
@@ -225,6 +230,7 @@ _ive_OF:
 	popa
 	iret
 _ive_BR:
+.global _ive_BR
 	pusha
 	call _iv_regdump
 	movw $0x1C00+'5', %ax
@@ -232,6 +238,7 @@ _ive_BR:
 	popa
 	iret
 _ive_UD:
+.global _ive_UD
 	pusha
 	call _iv_regdump
 	movw $0x1C00+'6', %ax
@@ -241,6 +248,7 @@ _ive_UD:
 	popa
 	iret
 _ive_NM:
+.global _ive_NM
 	pusha
 	call _iv_regdump
 	movw $0x1C00+'7', %ax
@@ -248,6 +256,7 @@ _ive_NM:
 	popa
 	iret
 _ive_DF:
+.global _ive_DF
 	pusha
 	call _iv_regdump
 	movw $0x6C00+'D', %ax
@@ -257,6 +266,7 @@ _ive_DF:
 	cli
 	hlt
 _ive_X9:
+.global _ive_X9
 	pusha
 	call _iv_regdump
 	movw $0x1C00+'9', %ax
@@ -264,6 +274,7 @@ _ive_X9:
 	popa
 	iret
 _ive_TS:
+.global _ive_TS
 	pusha
 	call _iv_regdump
 	movw $0x1C00+'A', %ax
@@ -271,6 +282,7 @@ _ive_TS:
 	popa
 	iret
 _ive_NP:
+.global _ive_NP
 	pusha
 	call _iv_regdump
 	movw $0x1C00+'B', %ax
@@ -278,6 +290,7 @@ _ive_NP:
 	popa
 	iret
 _ive_SS:
+.global _ive_SS
 	pusha
 	call _iv_regdump
 	movw $0x1C00+'C', %ax
@@ -285,6 +298,7 @@ _ive_SS:
 	popa
 	iret
 _ive_GP:
+.global _ive_GP
 	pusha
 	call _iv_regdump
 	movw $0x1C00+'G', %ax
@@ -294,6 +308,7 @@ _ive_GP:
 	popa
 	iret
 _ive_PF:
+.global _ive_PF
 	pusha
 	call _iv_regdump
 	movw $0x1C00+'P', %ax
@@ -301,6 +316,7 @@ _ive_PF:
 	popa
 	iret
 _ive_X15:
+.global _ive_X15
 	pusha
 	call _iv_regdump
 	movw $0x1C00+'F', %ax
@@ -308,6 +324,7 @@ _ive_X15:
 	popa
 	iret
 _ive_MF:
+.global _ive_MF
 	pusha
 	call _iv_regdump
 	movw $0x1C00+'M', %ax
@@ -315,6 +332,7 @@ _ive_MF:
 	popa
 	iret
 _ive_AC:
+.global _ive_AC
 	pusha
 	call _iv_regdump
 	movw $0x1C00+'L', %ax
@@ -322,6 +340,7 @@ _ive_AC:
 	popa
 	iret
 _ive_MC:
+.global _ive_MC
 	pusha
 	call _iv_regdump
 	movw $0x1C00+'M', %ax
@@ -329,6 +348,7 @@ _ive_MC:
 	cli
 	hlt
 _ive_XM:
+.global _ive_XM
 	pusha
 	call _iv_regdump
 	movw $0x1C00+'X', %ax
@@ -336,6 +356,7 @@ _ive_XM:
 	popa
 	iret
 _iv_irq0:
+.global _iv_irq0
 	pusha
 	call _iv_add_n
 	mov $0, %al
@@ -343,6 +364,7 @@ _iv_irq0:
 	popa
 	iret
 _iv_irq1:
+.global _iv_irq1
 	pusha
 	call _iv_add_n
 	lea _ivix_irq1_fn, %esi
@@ -356,6 +378,7 @@ _iv_irq1:
 	popa
 	iret
 _iv_irq2:
+.global _iv_irq2
 	pusha
 	call _iv_add_n
 	mov $2, %al
@@ -363,6 +386,7 @@ _iv_irq2:
 	popa
 	iret
 _iv_irq3:
+.global _iv_irq3
 	pusha
 	call _iv_add_n
 	mov $3, %al
@@ -370,6 +394,7 @@ _iv_irq3:
 	popa
 	iret
 _iv_irq4:
+.global _iv_irq4
 	pusha
 	call _iv_add_n
 	mov $4, %al
@@ -377,6 +402,7 @@ _iv_irq4:
 	popa
 	iret
 _iv_irq5:
+.global _iv_irq5
 	pusha
 	call _iv_add_n
 	mov $5, %al
@@ -384,6 +410,7 @@ _iv_irq5:
 	popa
 	iret
 _iv_irq6:
+.global _iv_irq6
 	pusha
 	call _iv_add_n
 	mov $6, %al
@@ -391,6 +418,7 @@ _iv_irq6:
 	popa
 	iret
 _iv_irq7:
+.global _iv_irq7
 	pusha
 	call _iv_add_n
 	mov $7, %al
@@ -398,6 +426,7 @@ _iv_irq7:
 	popa
 	iret
 _iv_irq8:
+.global _iv_irq8
 	pusha
 	call _iv_add_n
 	mov $8, %al
@@ -405,6 +434,7 @@ _iv_irq8:
 	popa
 	iret
 _iv_irq9:
+.global _iv_irq9
 	pusha
 	call _iv_add_n
 	mov $9, %al
@@ -412,6 +442,7 @@ _iv_irq9:
 	popa
 	iret
 _iv_irq10:
+.global _iv_irq10
 	pusha
 	call _iv_add_n
 	mov $10, %al
@@ -419,6 +450,7 @@ _iv_irq10:
 	popa
 	iret
 _iv_irq11:
+.global _iv_irq11
 	pusha
 	call _iv_add_n
 	mov $11, %al
@@ -426,6 +458,7 @@ _iv_irq11:
 	popa
 	iret
 _iv_irq12:
+.global _iv_irq12
 	pusha
 	call _iv_add_n
 	lea _ivix_irq12_fn, %esi
@@ -439,6 +472,7 @@ _iv_irq12:
 	popa
 	iret
 _iv_irq13:
+.global _iv_irq13
 	pusha
 	call _iv_add_n
 	mov $13, %al
@@ -446,6 +480,7 @@ _iv_irq13:
 	popa
 	iret
 _iv_irq14:
+.global _iv_irq14
 	pusha
 	call _iv_add_n
 	mov $14, %al
@@ -453,6 +488,7 @@ _iv_irq14:
 	popa
 	iret
 _iv_irq15:
+.global _iv_irq15
 	pusha
 	call _iv_add_n
 	mov $15, %al
@@ -472,19 +508,8 @@ _iv_add_n:
 	add $1, %eax
 	movl %eax, _ivix_int_n
 	ret
-_iv_noise:
-	pusha
-	movl $0xB8080, %esi
-	movb 0(%esi), %al
-	movb $0x2C, %ah
-	inc %al
-	movw %ax, 0(%esi)
-	movl $_ivix_int_n, %edx
-	movl 0(%edx), %eax
-	add $1, %eax
-	movl %eax, _ivix_int_n
-	popa
 _iv_nothing:
+.global _iv_nothing
 	iret
 
 _ix_outb:
@@ -711,5 +736,4 @@ idt_int _iv_irq12, KSEG
 idt_int _iv_irq13, KSEG
 idt_int _iv_irq14, KSEG
 idt_int _iv_irq15, KSEG	# 0x2f
-idt_int _iv_noise, KSEG
 

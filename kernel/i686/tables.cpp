@@ -78,9 +78,51 @@ struct GDTPtr {
 struct IDTEntry {
 	uint16_t ofs_lo;
 	uint16_t selector;
-	uint16_t flags;
+	uint16_t flags : 13;
+	uint16_t priv : 2;
+	uint16_t present : 1;
 	uint16_t ofs_hi;
 };
+
+enum PRIVLVL {
+	RING_0 = 0,
+	RING_1 = 1,
+	RING_2 = 2,
+	RING_3 = 3,
+};
+
+typedef void (*InteruptEntry)(void);
+
+IDTEntry IDTTrap(InteruptEntry base, uint16_t seg, int p) {
+	return IDTEntry {
+		(uint16_t)(((uint32_t)base) & 0xffff),
+		seg,
+		(uint16_t)(0x700),
+		(uint16_t)(p),
+		1,
+		(uint16_t)(((uint32_t)base) >> 16)
+	};
+}
+IDTEntry IDTInt(InteruptEntry base, uint16_t seg, int p) {
+	return IDTEntry {
+		(uint16_t)(((uint32_t)base) & 0xffff),
+		seg,
+		(uint16_t)(0x600),
+		(uint16_t)(p),
+		1,
+		(uint16_t)(((uint32_t)base) >> 16)
+	};
+}
+IDTEntry IDTTask(uint16_t seg, int p) {
+	return IDTEntry {
+		0,
+		seg,
+		(uint16_t)(0x500),
+		(uint16_t)(p),
+		1,
+		0
+	};
+}
 
 struct IDTPtr {
 	uint16_t len;
@@ -96,7 +138,6 @@ struct GDTEntry gdt_data[256] = {
 	MkGDT(0, 0xffffff, T_DATA | T_READWRITE, TYPE_CODE | PRESENT | PRIV_SYSTEM | SEG32 | GRAN_4K),
 	MkGDT(0, 0xffffff, T_CODE | T_EXECREAD,  TYPE_CODE | PRESENT | PRIV_SYSTEM | SEG32 | GRAN_4K),
 };
-
 
 }
 
