@@ -1,0 +1,102 @@
+
+#include <stdint.h>
+
+#pragma pack(push, 1)
+struct GDTEntry {
+	uint16_t limit_lo;
+	uint16_t base_lo;
+	uint8_t base_16;
+	uint8_t type : 4;
+	uint8_t system : 1;
+	uint8_t priv : 2;
+	uint8_t present : 1;
+	uint8_t limit_16 : 4;
+	uint8_t flags : 4;
+	uint8_t base_24;
+};
+
+enum GDTFlags {
+	TYPE_SYSTEM = 0,
+	TYPE_CODE = 1,
+	PRIV_SYSTEM = 0,
+	PRIV_USER = 0x6,
+	PRESENT = 0x8,
+	AVAILABLE = 0x10,
+	MODE64 = 0x20,
+	SEG16 = 0,
+	SEG32 = 0x40,
+	GRAN_BYTE = 0,
+	GRAN_4K = 0x80,
+};
+
+enum GDTTypes {
+	/* code and data types (bit flags) */
+	T_DATA = 0,
+	T_CODE = 8,
+	T_EXPAND_DOWN = 4,
+	T_READWRITE = 2,
+	T_READONLY = 0,
+	T_EXECONLY = 0,
+	T_EXECREAD = 2,
+	T_ACCESSED = 1,
+	T_CONFORMING = 4,
+	/* system types */
+	T_TSS16A = 1,
+	T_LDT = 2,
+	T_TSS16B = 3,
+	T_CALL16 = 4,
+	T_TASK = 5,
+	T_INT16 = 6,
+	T_TRAP16 = 7,
+	T_TSS32A = 9,
+	T_TSS32B = 11,
+	T_CALL32 = 12,
+	T_INT32 = 14,
+	T_TRAP32 = 15
+};
+
+constexpr GDTEntry MkGDT(uint32_t base, uint32_t lim, uint8_t t, uint8_t f) {
+	return GDTEntry {
+	(uint16_t)(lim & 0xffff),
+	(uint16_t)(base & 0xffff),
+	(uint8_t)(base >> 16),
+	t,
+	(uint8_t)(f & 1),
+	(uint8_t)(f >> 1),
+	(uint8_t)(f >> 3),
+	(uint8_t)(lim >> 16),
+	(uint8_t)(f >> 4),
+	(uint8_t)(base >> 24)
+	};
+}
+
+struct GDTPtr {
+	uint16_t len;
+	GDTEntry *ptr;
+};
+
+struct IDTEntry {
+	uint16_t ofs_lo;
+	uint16_t selector;
+	uint16_t flags;
+	uint16_t ofs_hi;
+};
+
+struct IDTPtr {
+	uint16_t len;
+	IDTEntry *ptr;
+};
+
+#pragma pack(pop)
+
+
+extern "C" {
+struct GDTEntry gdt_data[256] = {
+	MkGDT(0, 0, 0, 0),
+	MkGDT(0, 0xffffff, T_DATA | T_READWRITE, TYPE_CODE | PRESENT | PRIV_SYSTEM | SEG32 | GRAN_4K),
+	MkGDT(0, 0xffffff, T_CODE | T_EXECREAD,  TYPE_CODE | PRESENT | PRIV_SYSTEM | SEG32 | GRAN_4K),
+};
+
+
+}
+

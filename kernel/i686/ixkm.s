@@ -32,8 +32,8 @@ _ivix_idt_ptr:
 .int _ivix_idt
 
 _ivix_gdt_ptr:
-.word 0x0000
-.int _ivix_gdt
+.word 0x0100 * 8
+.int gdt_data	# linked externally
 
 _ivix_dump_n:
 .int 0
@@ -53,15 +53,16 @@ _ivix_irq12_fn:
 _ix_entry:
 	.global _ix_entry
 	mov $ixstk, %esp
-	call _ix_makeidt
+	lgdt _ivix_gdt_ptr	# load GDT
+	call _ix_makeidt	# make and load IDT
 	lidt _ivix_idt_ptr
-	call _ix_initpic
+	call _ix_initpic	# configure the PIC
 
-	sub $0xc, %esp
-	call _ix_construct
-	sti
-	call _kernel_main
-	jmp _ix_halt
+	sub $0xc, %esp		# align the stack
+	call _ix_construct	# call ctors
+	sti			# interupts on
+	call _kernel_main	# jump to C/C++
+	jmp _ix_halt		# idle loop if we get here
 
 .section .ctors.begin
 .int 0xffffffff
@@ -627,10 +628,6 @@ _ix_req:
 	ret
 
 .data
-.align 8
-_ivix_gdt:
-.global _ivix_gdt
-.fill 0x100
 .align 8
 _ivix_idt:	# the IDT itself
 .global _ivix_idt
