@@ -736,4 +736,5 @@ idt_int _iv_irq12, KSEG
 idt_int _iv_irq13, KSEG
 idt_int _iv_irq14, KSEG
 idt_int _iv_irq15, KSEG	# 0x2f
+idt_int _iv_nothing, KSEG
 

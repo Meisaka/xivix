@@ -97,8 +97,30 @@ void printhex(uint32_t v) {
 		putc(c);
 	} while(i > 0);
 }
+void printhex(uint64_t v) {
+	int i;
+	for(i = 64; i > 4 && ((v >> (i-4)) & 0x0f) == 0; i-=4); // get digit length
+	do {
+		i -= 4;
+		char c = (v >> i) & 0x0f;
+		if(c > 9) c += 7;
+		c += '0';
+		putc(c);
+	} while(i > 0);
+}
 void printhex(uint32_t v, uint32_t bits) {
 	if(bits > 32) bits = 32;
+	int i = bits ^ (bits & 0x3);
+	do {
+		i -= 4;
+		char c = (v >> i) & 0x0f;
+		if(c > 9) c += 7;
+		c += '0';
+		putc(c);
+	} while(i > 0);
+}
+void printhexx(uint64_t v, uint32_t bits) {
+	if(bits > 64) bits = 64;
 	int i = bits ^ (bits & 0x3);
 	do {
 		i -= 4;
@@ -150,6 +172,19 @@ void printf(const char *ftr, ...) {
 	}
 	va_end(v);
 }
+
+void show_mem_map() {
+	uint32_t lim = *((uint16_t*)0x500);
+	mmentry *mo = (mmentry*)0x800;
+	for(uint32_t i = 0; i < lim; i++) {
+		printhexx(mo->start, 64);
+		printf(" - ");
+		printhex(mo->size);
+		printf(" - %d (%x)\n", mo->type, mo->exattrib);
+		mo++;
+	}
+}
+
 } // ns xiv
 
 char skeymap[256] = {
@@ -257,12 +292,10 @@ struct VBEModeInfo {
 };
 #pragma pack(pop)
 
-
 extern "C" {
 void _kernel_main() {
 	using namespace xiv;
 	uint32_t k = 0;
-	uint32_t lim = *((uint16_t*)0x500);
 	VBEModeInfo *vidinfo = reinterpret_cast<VBEModeInfo*>(0x1200);
 	uint32_t *vid = reinterpret_cast<uint32_t*>(vidinfo->phys_base);
 	for(uint32_t y = 0; y < 102400; y++) {
@@ -282,6 +315,8 @@ void _kernel_main() {
 			vidinfo->phys_base,
 			vidinfo->mem_model
 		 );
+
+	show_mem_map();
 
 	{
 		uint16_t vba;
@@ -377,13 +412,6 @@ void _kernel_main() {
 			_ix_halt();
 		}
 		busy = false;
-	}
-	mmentry *mo = (mmentry*)0x800;
-	for(uint32_t i = 0; i < lim; i++) {
-		if(mo->type != 1) {
-			mo->type = 2;
-		}
-		mo++;
 	}
 	_ix_totalhalt();
 }
