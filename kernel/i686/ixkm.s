@@ -108,7 +108,6 @@ _ivix_phy_pdpt:
 
 .text
 _kernel_entry:
-	jmp _ix_halt # just stop right here for now...
 	mov $ixstk, %esp
 	lgdt _ivix_gdt_ptr	# load GDT
 	call _ix_makeidt	# make and load IDT
@@ -365,7 +364,10 @@ _ive_PF:
 	call _iv_regdump
 	movw $0x1C00+'P', %ax
 	movw %ax, 0x000B8082
+	movw $0x1C00+'F', %ax
+	movw %ax, 0x000B8084
 	popa
+	add $4, %esp
 	iret
 _ive_X15:
 .global _ive_X15
