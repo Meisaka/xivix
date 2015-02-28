@@ -48,10 +48,67 @@ _ivix_irq12_fn:
 .int 0
 .global _ivix_irq12_fn
 
-.section .ixboot,"x"
+.section .ixboot,"ax"
 	.int 0xeca70433
 _ix_entry:
 	.global _ix_entry
+	lgdt .ixboot.gdtptr	# load initial GDT
+	leal _kernel_phy_end, %eax	# set up page directory at end of kernel
+	mov %eax, %edi
+	orl $0x1, %eax
+	movl %eax, %edx
+	xor %eax, %eax
+	movl %edx, _ivix_phy_pdpt	# map 0x0.. and 0xc.. in virtual memory
+	movl %eax, _ivix_phy_pdpt + 4
+	movl %edx, _ivix_phy_pdpt + 0x08
+	movl %eax, _ivix_phy_pdpt + 0x0c
+	movl %edx, _ivix_phy_pdpt + 0x10
+	movl %eax, _ivix_phy_pdpt + 0x14
+	movl %edx, _ivix_phy_pdpt + 0x18
+	movl %eax, _ivix_phy_pdpt + 0x1c
+	movl %eax, %edx
+	orl $0x83, %eax		# set flags on it 2M pages
+	movl %eax, _kernel_phy_end
+	movl %edx, _kernel_phy_end + 4
+	addl $0x200000, %eax 	# identity map 0 - 4M
+	movl %eax, _kernel_phy_end + 8
+	movl %edx, _kernel_phy_end + 12
+	movl %cr4, %eax
+	orl $0x20, %eax	# enable PAE
+	movl %eax, %cr4
+	leal _ivix_phy_pdpt, %eax	# load CR3 with the page table
+	movl %eax, %cr3
+	movl %cr0, %eax
+	orl $0x80000000, %eax	# enable paging bit
+	movl %eax, %cr0
+	ljmp $0x10, $1f
+1:
+	jmp _kernel_entry
+
+.align 8
+.ixboot.gdtptr:
+.word 4 * 8
+.int .ixboot.gdt
+.align 8
+.ixboot.gdt:
+.int 0
+.int 0
+.int 0x0000ffff
+.int 0x00cf9200
+.int 0x0000ffff
+.int 0x00cf9a00
+
+.align 32
+_ivix_phy_pdpt:
+.fill 32, 2, 0xfe00
+
+.section .ctors.begin
+.int 0xffffffff
+.section .ctors.end
+
+.text
+_kernel_entry:
+	jmp _ix_halt # just stop right here for now...
 	mov $ixstk, %esp
 	lgdt _ivix_gdt_ptr	# load GDT
 	call _ix_makeidt	# make and load IDT
@@ -64,11 +121,6 @@ _ix_entry:
 	call _kernel_main	# jump to C/C++
 	jmp _ix_halt		# idle loop if we get here
 
-.section .ctors.begin
-.int 0xffffffff
-.section .ctors.end
-
-.text
 _iv_regdump:
 	movw $0x0500+'0', %ax
 	mov $0x000B81EA, %edi
