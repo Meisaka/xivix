@@ -100,6 +100,8 @@ _ix_entry:
 
 .align 32
 _ivix_phy_pdpt:
+.set _ivix_pdpt, _ivix_phy_pdpt + 0xc0000000
+.global _ivix_pdpt
 .fill 32, 2, 0xfe00
 
 .section .ctors.begin
