@@ -1,7 +1,7 @@
 
 #include "vgatext.hpp"
 
-constexpr static uint16_t *vgabase = (uint16_t*)0xB8000;
+constexpr static uint16_t *vgabase = (uint16_t*)0xc00B8000;
 
 VGAText::VGAText() {
 	col = 0;

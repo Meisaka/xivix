@@ -100,6 +100,7 @@ _ix_entry:
 
 .align 32
 _ivix_phy_pdpt:
+.global _ivix_phy_pdpt
 .set _ivix_pdpt, _ivix_phy_pdpt + 0xc0000000
 .global _ivix_pdpt
 .fill 32, 2, 0xfe00
@@ -123,43 +124,47 @@ _kernel_entry:
 	jmp _ix_halt		# idle loop if we get here
 
 _iv_regdump:
+	push %ebp
+	mov %esp, %ebp
+	movl 0x0c(%ebp), %ecx
 	movw $0x0500+'0', %ax
-	mov $0x000B81EA, %edi
+	mov $0x000B8000 + 20 + (6 * 160), %edi
 	mov $rdumpnames, %esi
 	call putzstr
-	movl 0x20(%esp), %ebx	# EAX
+	movl 0x1c(%ecx), %ebx	# EAX
 	call puthex32
 	call putzstr
-	movl 0x1C(%esp), %ebx	# ECX
+	movl 0x18(%ecx), %ebx	# ECX
 	call puthex32
 	call putzstr
-	movl 0x18(%esp), %ebx	# EDX
+	movl 0x14(%ecx), %ebx	# EDX
 	call puthex32
 	call putzstr
-	movl 0x14(%esp), %ebx	# EBX
-	call puthex32
-	add $56, %edi
-	call putzstr
-	movl 0x10(%esp), %ebx	# ESP
-	call puthex32
-	call putzstr
-	movl 0x0C(%esp), %ebx	# EBP
-	call puthex32
-	call putzstr
-	movl 0x08(%esp), %ebx	# ESI
-	call puthex32
-	call putzstr
-	movl 0x04(%esp), %ebx	# EDI
+	movl 0x10(%ecx), %ebx	# EBX
 	call puthex32
 	add $56, %edi
 	call putzstr
-	movl 0x24(%esp), %ebx
+	movl 0x0c(%ecx), %ebx	# ESP
 	call puthex32
 	call putzstr
-	movl 0x28(%esp), %ebx
+	movl 0x08(%ecx), %ebx	# EBP
 	call puthex32
 	call putzstr
-	movl 0x2c(%esp), %ebx
+	movl 0x04(%ecx), %ebx	# ESI
+	call puthex32
+	call putzstr
+	movl 0x0(%ecx), %ebx	# EDI
+	call puthex32
+	add $56, %edi
+	call putzstr
+	movl 0x08(%ebp), %ecx
+	movl 0x0(%ecx), %ebx	# EIP
+	call puthex32
+	call putzstr
+	movl 0x4(%ecx), %ebx	# CS
+	call puthex32
+	call putzstr
+	movl 0x8(%ecx), %ebx	# EFlag
 	call puthex32
 	call putzstr
 	movl _ivix_dump_n, %ebx
@@ -168,7 +173,8 @@ _iv_regdump:
 	call puthex32
 	add $68, %edi
 	call putzstr
-	movl 0x10(%esp), %esi	# ESP
+	movl 0x0c(%ebp), %ecx
+	movl 0x0c(%ecx), %esi	# ESP
 	mov $32, %edx
 	add $56, %edi
 2:	and %edx, %edx
@@ -190,6 +196,7 @@ _iv_regdump:
 	add $66, %edi
 	mov _ivix_irq1_fn, %ebx
 	call puthex32
+	pop %ebp
 	ret
 rdumpnames:
 	.asciz " EAX="
@@ -206,12 +213,14 @@ rdumpnames:
 	.asciz "  N ="
 	.asciz " *STACK* "
 puthex32:
+	push %ecx
 	movw $0x5F00, %ax
 	mov $8, %ecx
 1:	rol $4, %ebx
 	mov %bl, %al
 	call puthexchar
 	loop 1b
+	pop %ecx
 	ret
 putzstr:
 	mov $0x5700, %ax
@@ -356,14 +365,21 @@ _ive_GP:
 	call _iv_regdump
 	movw $0x1C00+'G', %ax
 	movw %ax, 0x000B8082
+	movw $0x1C00+'P', %ax
+	movw %ax, 0x000B8084
 	cli
 	hlt
 	popa
 	iret
 _ive_PF:
 .global _ive_PF
-	pusha
+	pusha			# "new" page fault / debug code
+	mov %esp, %eax
+	push %eax
+	add $0x24, %eax
+	push %eax
 	call _iv_regdump
+	add $8, %esp
 	movw $0x1C00+'P', %ax
 	movw %ax, 0x000B8082
 	movw $0x1C00+'F', %ax

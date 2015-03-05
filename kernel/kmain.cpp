@@ -5,6 +5,8 @@
 #include "dev/fbtext.hpp"
 #include "dev/ps2.hpp"
 
+#include "memory.hpp"
+
 #include <stdarg.h>
 
 struct mmentry {
@@ -15,8 +17,11 @@ struct mmentry {
 };
 
 extern "C" {
+
+extern size_t const _kernel_end;
+
+static char *em = reinterpret_cast<char*>(_kernel_end + 0x1000);
 void* malloc(size_t v) {
-	static char *em = reinterpret_cast<char*>(0x400000);
 	if(v > 1) {
 		void *pa = em;
 		if(v & 0xf) {
@@ -296,12 +301,26 @@ extern "C" {
 void _kernel_main() {
 	using namespace xiv;
 	uint32_t k = 0;
+	VGAText *lvga = new VGAText();
+	xiv::txtout = lvga;
+	printf("xivix Text mode hello\n");
+	printf("fetching VBE...\n");
 	VBEModeInfo *vidinfo = reinterpret_cast<VBEModeInfo*>(0x1200);
-	uint32_t *vid = reinterpret_cast<uint32_t*>(vidinfo->phys_base);
+	printf("mapping pages...\n");
+	{
+		uint64_t pbase = vidinfo->phys_base;
+		uint32_t vbase = 0xd0000000;
+		for(int j = 0; j < 4; j++) {
+			mem::map_page({pbase}, vbase, mem::MAP_RW | mem::MAP_LARGE);
+			pbase += 0x200000;
+			vbase += 0x200000;
+		}
+	}
+	uint32_t *vid = reinterpret_cast<uint32_t*>(0xd0000000);
+	printf("display clear...\n");
 	for(uint32_t y = 0; y < 102400; y++) {
 		vid[y] = 0x0;
 	}
-	//VGAText *lvga = new VGAText();
 	FramebufferText *fbt = new FramebufferText(vid, vidinfo->x_res * (vidinfo->bits_per_pixel / 8), vidinfo->bits_per_pixel);
 	xiv::txtout = fbt;
 	//xiv::txtout = lvga;

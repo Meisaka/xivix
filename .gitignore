@@ -1,8 +1,8 @@
 *~
 *.swp
 *.img
-runtftpd.sh
 *.elf
 *.o
-evset.sh
+*.sh
+*.info
 make

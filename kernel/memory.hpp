@@ -25,9 +25,10 @@ namespace mem {
 		MAP_RW = 0x2,
 		MAP_USER = 0x4,
 		MAP_EXEC = 0x8,
+		MAP_LARGE = 0x80,
 	};
 
-	void map_page(phyaddr_t, void*, uint32_t);
+	void map_page(phyaddr_t, uintptr_t, uint32_t);
 	void * alloc_pages(size_t, uint32_t);
 	void * request(size_t, void*, uint64_t, uint32_t);
 }
