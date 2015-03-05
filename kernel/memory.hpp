@@ -28,6 +28,7 @@ namespace mem {
 		MAP_LARGE = 0x80,
 	};
 
+	void initialize();
 	void map_page(phyaddr_t, uintptr_t, uint32_t);
 	void * alloc_pages(size_t, uint32_t);
 	void * request(size_t, void*, uint64_t, uint32_t);

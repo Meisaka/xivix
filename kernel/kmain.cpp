@@ -18,33 +18,22 @@ struct mmentry {
 
 extern "C" {
 
-extern size_t const _kernel_end;
+extern char _kernel_end;
 
-static char *em = reinterpret_cast<char*>(_kernel_end + 0x1000);
 void* malloc(size_t v) {
-	if(v > 1) {
-		void *pa = em;
-		if(v & 0xf) {
-			v += 16 - (v & 0xf);
-		}
-		em = em + v;
-		return pa;
-	}
-	return nullptr;
+	return kmalloc(v);
 }
 void free(void *f) {
-	if(f == ((void*)0x1000) ) {
-		*((uint32_t*)f) = 7;
-	}
+	kfree(f);
 }
 void * operator new(size_t v) {
-	return malloc(v);
+	return kmalloc(v);
 }
 void * operator new[](size_t v) {
-	return malloc(v);
+	return kmalloc(v);
 }
 void operator delete(void *d) {
-	free(d);
+	kfree(d);
 }
 
 void abort() {
@@ -304,6 +293,7 @@ void _kernel_main() {
 	VGAText *lvga = new VGAText();
 	xiv::txtout = lvga;
 	printf("xivix Text mode hello\n");
+	mem::initialize();
 	printf("fetching VBE...\n");
 	VBEModeInfo *vidinfo = reinterpret_cast<VBEModeInfo*>(0x1200);
 	printf("mapping pages...\n");
@@ -323,9 +313,7 @@ void _kernel_main() {
 	}
 	FramebufferText *fbt = new FramebufferText(vid, vidinfo->x_res * (vidinfo->bits_per_pixel / 8), vidinfo->bits_per_pixel);
 	xiv::txtout = fbt;
-	//xiv::txtout = lvga;
-	//lvga->nextline();
-	printf("xivix hello! %d\nMore: %x\n", 9001, 0xfeef);
+	printf("xivix hello!\n");
 	printf("Video info: %x %dx%d : %d @%x\nMModel: %x\n",
 			vidinfo->mode_attrib,
 			vidinfo->x_res,
@@ -351,8 +339,6 @@ void _kernel_main() {
 	psys.add_kbd(kb1);
 	psys.init();
 	bool busy = false;
-	//lvga->setfg(7);
-	//lvga->setbg(0);
 	uint32_t nxf = _ivix_int_n + 40;
 	bool flk = false;
 	while(true) {
