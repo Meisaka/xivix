@@ -23,6 +23,7 @@
 #include "ktypes.hpp"
 
 namespace xiv {
+void putc(char);
 void printn(const char *, size_t);
 void print(const char *);
 void printdec(uint32_t d);

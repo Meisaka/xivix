@@ -185,8 +185,8 @@ void printf(const char *ftr, ...) {
 }
 
 void show_mem_map() {
-	uint32_t lim = *((uint16_t*)0x500);
-	mmentry *mo = (mmentry*)0x800;
+	uint32_t lim = *((uint16_t*)0xc0000500);
+	mmentry *mo = (mmentry*)0xc0000800;
 	for(uint32_t i = 0; i < lim; i++) {
 		printhexx(mo->start, 64);
 		printf(" - ");
@@ -309,10 +309,11 @@ void _kernel_main() {
 	uint32_t k = 0;
 	VGAText *lvga = new VGAText();
 	xiv::txtout = lvga;
-	printf("xivix Text mode hello\n");
+	printhex((uint32_t)lvga, 32);
+	printf(" xivix Text mode hello\n");
 	mem::initialize();
 	printf("fetching VBE...\n");
-	VBEModeInfo *vidinfo = reinterpret_cast<VBEModeInfo*>(0x1200);
+	VBEModeInfo *vidinfo = reinterpret_cast<VBEModeInfo*>(0xc0001200);
 	printf("mapping pages...\n");
 	{
 		uint64_t pbase = vidinfo->phys_base;
@@ -325,6 +326,7 @@ void _kernel_main() {
 	}
 	uint32_t *vid = reinterpret_cast<uint32_t*>(0xd0000000);
 	printf("display clear...\n");
+	printhex(*vid);
 	for(uint32_t y = 0; y < 102400; y++) {
 		vid[y] = 0x0;
 	}

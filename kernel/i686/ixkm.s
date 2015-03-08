@@ -146,7 +146,7 @@ _iv_regdump:
 	mov %esp, %ebp
 	movl 0x0c(%ebp), %ecx
 	movw $0x0500+'0', %ax
-	mov $0x000B8000 + 20 + (6 * 160), %edi
+	mov $0xC00B8000 + 20 + (6 * 160), %edi
 	mov $rdumpnames, %esi
 	call putzstr
 	movl 0x1c(%ecx), %ebx	# EAX
@@ -185,9 +185,11 @@ _iv_regdump:
 	movl 0x8(%ecx), %ebx	# EFlag
 	call puthex32
 	call putzstr
-	movl _ivix_dump_n, %ebx
-	inc %ebx
-	movl %ebx, _ivix_dump_n
+	movl -0x4(%ecx), %ebx	# N (Extra)
+	call puthex32
+	add $56, %edi
+	call putzstr
+	mov %cr2, %ebx
 	call puthex32
 	add $68, %edi
 	call putzstr
@@ -229,6 +231,7 @@ rdumpnames:
 	.asciz "  CS="
 	.asciz " FLG="
 	.asciz "  N ="
+	.asciz " CR2="
 	.asciz " *STACK* "
 puthex32:
 	push %ecx
@@ -257,15 +260,79 @@ puthexchar:
 	stosw
 	ret
 
+.set COM_DATA, 0x3f8
+.set COM_INTR, COM_DATA + 1
+.set COM_FC, COM_DATA + 2
+.set COM_LC, COM_DATA + 3
+.set COM_MC, COM_DATA + 4
+.set COM_LS, COM_DATA + 5
+
+ix_initcom:
+.global ixcom_init
+	mov $0, %al
+	mov $COM_INTR, %dx
+	out %al, %dx
+	mov $0x80, %al
+	mov $COM_LC, %dx
+	out %al, %dx
+	mov $0x02, %al
+	mov $COM_DATA, %dx
+	out %al, %dx
+	mov $0, %al
+	mov $COM_INTR, %dx
+	out %al, %dx
+	mov $0x03, %al
+	mov $COM_LC, %dx
+	out %al, %dx
+	mov $0xC7, %al
+	mov $COM_FC, %dx
+	out %al, %dx
+	mov $0x03, %al
+	mov $COM_MC, %dx
+	out %al, %dx
+	ret
+
+ixcom_putc:
+.global ixcom_putc
+	mov $COM_LS, %dx
+	mov %al, %ah
+1:	inb %dx, %al
+	test $0x20, %al
+	jz 1b
+	mov $COM_DATA, %dx
+	mov %ah, %al
+	outb %al, %dx
+	ret
+
+ixcom_printz:
+1:	lodsb
+	test %al, %al
+	jz 1f
+	call ixcom_putc
+	jmp 1b
+1:	ret
+
+ixcom_hello:
+.global ixcom_hello
+	mov $_lc_hello, %esi
+	call ixcom_printz
+	ret
+_lc_hello: .asciz "hello"
+
+_ix_ecentry:
+	call ix_initcom
+	call ixcom_hello
+	ret
+
 __cxa_pure_virtual:
 .global __cxa_pure_virtual
 	push %cs
 	pushf
 	pusha
 	movw $0x0500+'P', %ax
-	movw %ax, 0x000B8086
+	movw %ax, 0xC00B8086
 	movw $0x0500+'V', %ax
-	movw %ax, 0x000B8088
+	movw %ax, 0xC00B8088
 	call _iv_regdump
 	cli
 	hlt
@@ -273,7 +340,7 @@ _ive_DE:
 .global _ive_DE
 	pusha
 	movw $0x0500+'0', %ax
-	movw %ax, 0x000B8082
+	movw %ax, 0xC00B8082
 	call _iv_regdump
 	popa
 	iret
@@ -282,7 +349,7 @@ _ive_DB:
 	pusha
 	call _iv_regdump
 	movw $0x1C00+'1', %ax
-	movw %ax, 0x000B8082
+	movw %ax, 0xC00B8082
 	popa
 	iret
 _ive_X2:
@@ -290,7 +357,7 @@ _ive_X2:
 	pusha
 	call _iv_regdump
 	movw $0x1C00+'2', %ax
-	movw %ax, 0x000B8082
+	movw %ax, 0xC00B8082
 	popa
 	iret
 _ive_BP:
@@ -298,7 +365,7 @@ _ive_BP:
 	pusha
 	call _iv_regdump
 	movw $0x1C00+'3', %ax
-	movw %ax, 0x000B8082
+	movw %ax, 0xC00B8082
 	popa
 	iret
 _ive_OF:
@@ -306,7 +373,7 @@ _ive_OF:
 	pusha
 	call _iv_regdump
 	movw $0x1C00+'4', %ax
-	movw %ax, 0x000B8082
+	movw %ax, 0xC00B8082
 	popa
 	iret
 _ive_BR:
@@ -314,7 +381,7 @@ _ive_BR:
 	pusha
 	call _iv_regdump
 	movw $0x1C00+'5', %ax
-	movw %ax, 0x000B8082
+	movw %ax, 0xC00B8082
 	popa
 	iret
 _ive_UD:
@@ -322,7 +389,7 @@ _ive_UD:
 	pusha
 	call _iv_regdump
 	movw $0x1C00+'6', %ax
-	movw %ax, 0x000B8082
+	movw %ax, 0xC00B8082
 	cli
 	hlt
 	popa
@@ -332,7 +399,7 @@ _ive_NM:
 	pusha
 	call _iv_regdump
 	movw $0x1C00+'7', %ax
-	movw %ax, 0x000B8082
+	movw %ax, 0xC00B8082
 	popa
 	iret
 _ive_DF:
@@ -340,9 +407,9 @@ _ive_DF:
 	pusha
 	call _iv_regdump
 	movw $0x6C00+'D', %ax
-	movw %ax, 0x000B8082
+	movw %ax, 0xC00B8082
 	movw $0x6C00+'F', %ax
-	movw %ax, 0x000B8084
+	movw %ax, 0xC00B8084
 	cli
 	hlt
 _ive_X9:
@@ -350,7 +417,7 @@ _ive_X9:
 	pusha
 	call _iv_regdump
 	movw $0x1C00+'9', %ax
-	movw %ax, 0x000B8082
+	movw %ax, 0xC00B8082
 	popa
 	iret
 _ive_TS:
@@ -358,7 +425,7 @@ _ive_TS:
 	pusha
 	call _iv_regdump
 	movw $0x1C00+'A', %ax
-	movw %ax, 0x000B8082
+	movw %ax, 0xC00B8082
 	popa
 	iret
 _ive_NP:
@@ -366,7 +433,7 @@ _ive_NP:
 	pusha
 	call _iv_regdump
 	movw $0x1C00+'B', %ax
-	movw %ax, 0x000B8082
+	movw %ax, 0xC00B8082
 	popa
 	iret
 _ive_SS:
@@ -374,7 +441,7 @@ _ive_SS:
 	pusha
 	call _iv_regdump
 	movw $0x1C00+'C', %ax
-	movw %ax, 0x000B8082
+	movw %ax, 0xC00B8082
 	popa
 	iret
 _ive_GP:
@@ -382,9 +449,9 @@ _ive_GP:
 	pusha
 	call _iv_regdump
 	movw $0x1C00+'G', %ax
-	movw %ax, 0x000B8082
+	movw %ax, 0xC00B8082
 	movw $0x1C00+'P', %ax
-	movw %ax, 0x000B8084
+	movw %ax, 0xC00B8084
 	cli
 	hlt
 	popa
@@ -399,9 +466,13 @@ _ive_PF:
 	call _iv_regdump
 	add $8, %esp
 	movw $0x1C00+'P', %ax
-	movw %ax, 0x000B8082
+	movw %ax, 0xC00B8082
 	movw $0x1C00+'F', %ax
-	movw %ax, 0x000B8084
+	movw %ax, 0xC00B8084
+	call _ix_ecentry
+	cli	# just stop
+	hlt
+
 	popa
 	add $4, %esp
 	iret
@@ -410,7 +481,7 @@ _ive_X15:
 	pusha
 	call _iv_regdump
 	movw $0x1C00+'F', %ax
-	movw %ax, 0x000B8082
+	movw %ax, 0xC00B8082
 	popa
 	iret
 _ive_MF:
@@ -418,7 +489,7 @@ _ive_MF:
 	pusha
 	call _iv_regdump
 	movw $0x1C00+'M', %ax
-	movw %ax, 0x000B8082
+	movw %ax, 0xC00B8082
 	popa
 	iret
 _ive_AC:
@@ -426,7 +497,7 @@ _ive_AC:
 	pusha
 	call _iv_regdump
 	movw $0x1C00+'L', %ax
-	movw %ax, 0x000B8082
+	movw %ax, 0xC00B8082
 	popa
 	iret
 _ive_MC:
@@ -434,7 +505,7 @@ _ive_MC:
 	pusha
 	call _iv_regdump
 	movw $0x1C00+'M', %ax
-	movw %ax, 0x000B8082
+	movw %ax, 0xC00B8082
 	cli
 	hlt
 _ive_XM:
@@ -442,7 +513,7 @@ _ive_XM:
 	pusha
 	call _iv_regdump
 	movw $0x1C00+'X', %ax
-	movw %ax, 0x000B8082
+	movw %ax, 0xC00B8082
 	popa
 	iret
 _iv_irq0:
@@ -624,6 +695,13 @@ _ix_outl:
 	mov 4(%esp), %edx
 	mov 8(%esp), %eax
 	outl %eax, %dx
+	ret
+
+_ix_loadcr3:
+	.global _ix_loadcr3
+	.type _ix_loadcr3,@function
+	mov 4(%esp), %eax	# load CR3 with the page table
+	movl %eax, %cr3
 	ret
 
 _ix_inb:
