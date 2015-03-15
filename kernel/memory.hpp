@@ -48,6 +48,7 @@ namespace mem {
 	};
 
 	void initialize();
+	void debug();
 	void map_page(phyaddr_t, uintptr_t, uint32_t);
 	void * alloc_pages(size_t, uint32_t);
 	void * request(size_t, void*, uint64_t, uint32_t);

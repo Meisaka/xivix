@@ -343,6 +343,7 @@ void _kernel_main() {
 		 );
 
 	show_mem_map();
+	mem::debug();
 
 	{
 		uint16_t vba;

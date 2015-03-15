@@ -39,11 +39,6 @@ namespace mem {
 		uint32_t type;
 		uint32_t attrib;
 	};
-	struct PageExtent {
-		uint64_t base;
-		uint32_t flags;
-		uint32_t count;
-	};
 	struct MemExtent {
 		uint32_t flags;
 		union {
@@ -54,16 +49,115 @@ namespace mem {
 	};
 
 	enum MEMEXTENT : uint32_t {
+		MX_UNSET,
 		MX_FREE,
 		MX_FIXED,
+		MX_CONTROL,
 		MX_ALLOC,
 		MX_IO,
 		MX_LINK,
 	};
 
-	struct MemExtent *baseext;
-	struct MemExtent *freeext;
-	struct MemExtent *lastext;
+	template<class T, int ADDRSIZE, int UNIT>
+	class ExtentAllocator {
+	public:
+		T *pbase;
+		T *pfree;
+		T *plast;
+	public:
+		ExtentAllocator() {}
+		void init(void * ldaddr) {
+			pbase = (T*)ldaddr;
+			pbase->flags = MX_UNSET;
+			pfree = plast = pbase;
+		}
+		void add_extent(uint64_t b, uint32_t l, uint32_t f) {
+			if(l == 0 || f == 0) return;
+			plast->base = b;
+			plast->length = l;
+			plast->flags = f;
+			if(f == MX_FREE) {
+				pfree = plast;
+			}
+			plast++;
+			plast->flags = MX_UNSET;
+		}
+		T * find_extent(uint64_t b) {
+			T *pt = pbase;
+			while(pt->flags != MX_UNSET) {
+				if(pt->base == b) return pt;
+				if(pt->flags == MX_LINK) {
+					pt = pt->next;
+				} else {
+					pt++;
+				}
+			}
+			return nullptr;
+		}
+		T * intersect_extent(uint64_t b, uint32_t l) {
+			T *pt = pbase;
+			while(pt->flags != MX_UNSET) {
+				if(b >= pt->base && (b + l * UNIT) < (pt->base + pt->length * UNIT)) {
+					return pt;
+				}
+				if(pt->flags == MX_LINK) {
+					pt = pt->next;
+				} else {
+					pt++;
+				}
+			}
+			return nullptr;
+		}
+		void mark_extent(uint64_t b, uint32_t l, uint32_t f) {
+			T *p;
+			p = intersect_extent(b, l);
+			if(p) {
+				if(b == p->base) {
+					add_extent(b + UNIT * l, p->length - l, p->flags);
+					p->length = l;
+					p->flags = f;
+				} else {
+					uint64_t adru = l * UNIT;
+					uint64_t adrm = (b - p->base) / UNIT;
+					add_extent(b, l, f);
+					add_extent(b + adru, p->length - (l + adrm), p->flags);
+					p->length = adrm;
+				}
+			} else {
+				add_extent(b, l, f);
+			}
+		}
+		uint64_t allocate(uint32_t l) {
+			return allocate(l, MX_ALLOC);
+		}
+		uint64_t allocate(uint32_t l, uint32_t f) {
+			if(pfree->flags != MX_FREE) {
+				return 0;
+			}
+			if(pfree->length <= l) {
+				uint64_t mm = pfree->base;
+				mark_extent(mm, l, f);
+				return mm;
+			}
+			return 0;
+		}
+		void debug_table() {
+			T *pt = pbase;
+			while(pt->flags != MX_UNSET) {
+				xiv::print("ALTE: ");
+				xiv::printhexx(pt->base, 64);
+				xiv::printf(" l: %x [f:%d]\n", pt->length, pt->flags);
+				if(pt->flags == MX_LINK) {
+					pt = pt->next;
+				} else {
+					pt++;
+				}
+			}
+		}
+	};
+
+	ExtentAllocator<MemExtent, 0x1000, 1> memalloc;
+	ExtentAllocator<MemExtent, 0x1000, 0x1000> blkalloc;
 
 	extern "C" {
 	extern uint8_t _ivix_phy_pdpt;
@@ -92,6 +186,7 @@ namespace mem {
 					printhex(mm->size >> 12);
 					printf(" pages at ");
 					printhex(mm->start);
+					blkalloc.add_extent(mm->start, mm->size >> 12, MX_FREE);
 					putc(10);
 				}
 			}
@@ -108,13 +203,15 @@ namespace mem {
 		xiv::printf("Heap start: %x\n", (size_t)&_kernel_end);
 		pdirs = (PageDir*)blockptr;
 		blockptr += 0x4000;
-		baseext = (MemExtent*)blockptr;
-		baseext->flags = MX_FIXED;
-		baseext->base = 0;
-		baseext->length = ((&_kernel_end) - (&_kernel_start)) + (size_t)(&_kernel_load);
-		freeext = baseext + 1;
-		lastext = freeext;
+		blkalloc.init(blockptr);
+		load_memmap();
+		blkalloc.mark_extent((size_t)(&_kernel_load), (size_t)(&_kernel_end - &_kernel_start) >> 12, MX_FIXED);
+		blkalloc.mark_extent((size_t)(pdirs) - (size_t)(phyptr), 4, MX_ALLOC);
+		blkalloc.mark_extent((size_t)(blockptr - phyptr), 1, MX_CONTROL);
+		blkalloc.allocate(1);
 		blockptr += 0x1000;
+		memalloc.init(blockptr);
+		memalloc.mark_extent((size_t)&_kernel_start, ((&_kernel_end) - (&_kernel_start)) + (size_t)(&_kernel_load), MX_FIXED);
 
 		uint32_t i;
 		for(i = 0; i < 2; i++) {
@@ -137,7 +234,6 @@ namespace mem {
 			pdirs[2].pde[i] = 0;
 		}
 		xiv::printf("Page directories reset\n");
-		load_memmap();
 	}
 
 	void map_page(phyaddr_t phy, uintptr_t t, uint32_t f) {
@@ -167,6 +263,10 @@ namespace mem {
 	void * request(size_t, void*, uint64_t, uint32_t) {
 		return nullptr;
 	}
+	void debug() {
+		blkalloc.debug_table();
+		memalloc.debug_table();
+	}
 }
 
 extern "C"
@@ -183,7 +283,7 @@ void * kmalloc(size_t l) {
 }
 
 extern "C"
-void * krealloc(void * p, size_t l) {
+void * krealloc(void *, size_t) {
 	return nullptr;
 }
 
