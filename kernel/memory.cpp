@@ -42,7 +42,7 @@ namespace mem {
 	struct MemExtent {
 		uint32_t flags;
 		union {
-			size_t base;
+			uint64_t base;
 			MemExtent *next;
 		};
 		size_t length;
@@ -50,6 +50,7 @@ namespace mem {
 
 	enum MEMEXTENT : uint32_t {
 		MX_UNSET,
+		MX_EMPTY,
 		MX_FREE,
 		MX_FIXED,
 		MX_CONTROL,
@@ -57,19 +58,31 @@ namespace mem {
 		MX_IO,
 		MX_LINK,
 	};
+	const char * const EXTENTCLASS[] = {
+		"UNSET",
+		"-----",
+		"FREE ",
+		"SYSTM",
+		"CTRL ",
+		"ALLOC",
+		"I/O  ",
+		"NLINK"
+	};
 
-	template<class T, int ADDRSIZE, int UNIT>
+	template<int ADDRSIZE, int UNIT, bool CULL = false, class T = MemExtent>
 	class ExtentAllocator {
 	public:
 		T *pbase;
 		T *pfree;
 		T *plast;
+		T *pcblock;
+		constexpr static const uint32_t max_ext = ADDRSIZE / sizeof(T);
 	public:
 		ExtentAllocator() {}
 		void init(void * ldaddr) {
 			pbase = (T*)ldaddr;
 			pbase->flags = MX_UNSET;
-			pfree = plast = pbase;
+			pfree = pcblock = plast = pbase;
 		}
 		void add_extent(uint64_t b, uint32_t l, uint32_t f) {
 			if(l == 0 || f == 0) return;
@@ -78,6 +91,8 @@ namespace mem {
 			plast->flags = f;
 			if(f == MX_FREE) {
 				pfree = plast;
+			} else if(f == MX_CONTROL) {
+				pcblock = plast;
 			}
 			plast++;
 			plast->flags = MX_UNSET;
@@ -94,10 +109,25 @@ namespace mem {
 			}
 			return nullptr;
 		}
+		void find_free_extent() {
+			T *pt = pbase;
+			uint32_t lc = 0;
+			while(pt->flags != MX_UNSET) {
+				if(pt->flags == MX_FREE && pt->length >= lc) {
+					pfree = pt;
+					lc = pfree->length;
+				}
+				if(pt->flags == MX_LINK) {
+					pt = pt->next;
+				} else {
+					pt++;
+				}
+			}
+		}
 		T * intersect_extent(uint64_t b, uint32_t l) {
 			T *pt = pbase;
 			while(pt->flags != MX_UNSET) {
-				if(b >= pt->base && (b + l * UNIT) < (pt->base + pt->length * UNIT)) {
+				if(b >= pt->base && (b + l * UNIT) <= (pt->base + pt->length * UNIT)) {
 					return pt;
 				}
 				if(pt->flags == MX_LINK) {
@@ -116,6 +146,9 @@ namespace mem {
 					add_extent(b + UNIT * l, p->length - l, p->flags);
 					p->length = l;
 					p->flags = f;
+					if(f == MX_CONTROL) {
+						pcblock = p;
+					}
 				} else {
 					uint64_t adru = l * UNIT;
 					uint64_t adrm = (b - p->base) / UNIT;
@@ -126,38 +159,62 @@ namespace mem {
 			} else {
 				add_extent(b, l, f);
 			}
+			if(pfree->flags != MX_FREE) find_free_extent();
 		}
 		uint64_t allocate(uint32_t l) {
 			return allocate(l, MX_ALLOC);
 		}
 		uint64_t allocate(uint32_t l, uint32_t f) {
 			if(pfree->flags != MX_FREE) {
-				return 0;
+				find_free_extent();
+				if(pfree->flags != MX_FREE) {
+					xiv::print("MALC: No FREE blocks\n");
+					return 0;
+				}
 			}
-			if(pfree->length <= l) {
+			if(pfree->length >= l) {
 				uint64_t mm = pfree->base;
 				mark_extent(mm, l, f);
 				return mm;
 			}
+			xiv::printf("MALC: Length Exceeded %d/%d\n", l, pfree->length);
 			return 0;
 		}
 		void debug_table() {
 			T *pt = pbase;
+			uint32_t addrc = 0;
 			while(pt->flags != MX_UNSET) {
 				xiv::print("ALTE: ");
 				xiv::printhexx(pt->base, 64);
-				xiv::printf(" l: %x [f:%d]\n", pt->length, pt->flags);
+				xiv::print(" f:");
+				xiv::print(EXTENTCLASS[pt->flags]);
+				xiv::printf(" l: %x ", pt->length);
+				if(pt == pfree) {
+					xiv::print("<FREE");
+				}
+				if(pt == pcblock) {
+					xiv::print("<CTLB");
+				}
+				if(pt == pbase) {
+					xiv::print("<BASE");
+				}
+				xiv::putc(10);
 				if(pt->flags == MX_LINK) {
 					pt = pt->next;
+					xiv::printf("Block: %d/%d\n", addrc, max_ext);
+					addrc = 0;
 				} else {
 					pt++;
+					addrc++;
 				}
 			}
+			xiv::printf("Block: %d/%d\n", addrc, max_ext);
 		}
 	};
 
-	ExtentAllocator<MemExtent, 0x1000, 1> memalloc;
-	ExtentAllocator<MemExtent, 0x1000, 0x1000> blkalloc;
+	ExtentAllocator<0x1000, 1> memalloc;
+	ExtentAllocator<0x1000, 0x1000> blkalloc;
+	ExtentAllocator<0x1000, 0x1000> vpalloc;
 
 	extern "C" {
 	extern uint8_t _ivix_phy_pdpt;
@@ -207,11 +264,19 @@ namespace mem {
 		load_memmap();
 		blkalloc.mark_extent((size_t)(&_kernel_load), (size_t)(&_kernel_end - &_kernel_start) >> 12, MX_FIXED);
 		blkalloc.mark_extent((size_t)(pdirs) - (size_t)(phyptr), 4, MX_ALLOC);
-		blkalloc.mark_extent((size_t)(blockptr - phyptr), 1, MX_CONTROL);
-		blkalloc.allocate(1);
-		blockptr += 0x1000;
+		blkalloc.mark_extent((size_t)(blockptr - phyptr), 2, MX_CONTROL);
+		blkalloc.allocate(2);
+		blockptr += 0x2000;
 		memalloc.init(blockptr);
-		memalloc.mark_extent((size_t)&_kernel_start, ((&_kernel_end) - (&_kernel_start)) + (size_t)(&_kernel_load), MX_FIXED);
+		memalloc.mark_extent((size_t)(blockptr), 0x2000, MX_CONTROL);
+		blockptr += 0x2000;
+		vpalloc.init(blockptr);
+		vpalloc.add_extent(0xc0000000, 0xffff, MX_FREE);
+		vpalloc.mark_extent(0xc0000000, 0x100, MX_FIXED);
+		vpalloc.mark_extent((size_t)(&_kernel_start), (size_t)(&_kernel_end - &_kernel_start) >> 12, MX_FIXED);
+		vpalloc.allocate(4);
+		vpalloc.allocate(2);
+		vpalloc.allocate(2);
 
 		uint32_t i;
 		for(i = 0; i < 2; i++) {
@@ -266,6 +331,7 @@ namespace mem {
 	void debug() {
 		blkalloc.debug_table();
 		memalloc.debug_table();
+		vpalloc.debug_table();
 	}
 }
 
@@ -284,6 +350,7 @@ void * kmalloc(size_t l) {
 
 extern "C"
 void * krealloc(void *, size_t) {
+	mem::blkalloc.allocate(1);
 	return nullptr;
 }
 

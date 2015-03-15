@@ -344,6 +344,8 @@ void _kernel_main() {
 
 	show_mem_map();
 	mem::debug();
+	krealloc(nullptr, 7);
+	mem::debug();
 
 	{
 		uint16_t vba;
