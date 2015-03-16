@@ -146,6 +146,21 @@ void FramebufferText::dispchar32(uint8_t c, uint32_t x, uint32_t y) {
 	}
 }
 
+void FramebufferText::render_vc(xiv::VirtTerm &vc) {
+	uint32_t xco = 0;
+	uint32_t yco = 0;
+	uint32_t ro = 0;;
+	for(int y = 0; y < vc.height; y++) {
+		xco = 0;
+		for(int x = 0; x < vc.width; x++) {
+			dispchar32(cast<uint8_t>(vc.buffer[x+ro].code), xco, yco);
+			xco += 8;
+		}
+		ro += vc.width;
+		yco += 8;
+	}
+}
+
 FramebufferText::FramebufferText(void *vm, uint32_t p, uint8_t bits) {
 	fbb = reinterpret_cast<uint8_t*>(vm);
 	pitch = p;

@@ -1,5 +1,5 @@
 /* ***
- * fbtext.hpp - Class decl for the simple graphical console
+ * vterm.hpp - Header for virtual terminal
  * Copyright (C) 2014-2015  Meisaka Yukara
  *
  *
@@ -17,35 +17,39 @@
  *     51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#ifndef FBTEXT_HAI
-#define FBTEXT_HAI
+#ifndef VTERM_HAI
+#define VTERM_HAI
 
 #include "ktypes.hpp"
-#include "vterm.hpp"
+#include "textio.hpp"
 
-class FramebufferText final : public xiv::TextIO {
+namespace xiv {
+
+struct VTCell {
+	uint32_t code;
+	uint32_t attr;
+};
+
+class VirtTerm final : public TextIO {
 private:
-	uint8_t *fbb;
-	uint32_t pitch;
-	uint32_t bitmode;
-	uint32_t col;
-	uint32_t row;
-	uint32_t hlim;
-	uint32_t vlim;
+	uint16_t col;
+	uint16_t row;
 public:
-	FramebufferText(void *vm, uint32_t p, uint8_t bits);
-	~FramebufferText();
-
-	void dispchar32(uint8_t c, uint32_t x, uint32_t y);
-	void render_vc(xiv::VirtTerm &);
-
-	void setto(uint16_t c, uint16_t r) override;
+	VTCell *buffer;
+	uint16_t height;
+	uint16_t width;
+public:
+	VirtTerm(uint16_t w, uint16_t h);
+	~VirtTerm();
+	void setto(uint16_t x, uint16_t y) override;
 	uint16_t getrow() const override;
 	uint16_t getcol() const override;
 	void putc(char c) override;
-	void putat(uint16_t c, uint16_t r, char v) override;
+	void putat(uint16_t x, uint16_t y, char v) override;
 	void nextline() override;
 };
+
+}
 
 #endif
 

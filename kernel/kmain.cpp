@@ -314,6 +314,8 @@ void _kernel_main() {
 	xiv::txtout = &lvga;
 	printf(" xivix Text mode hello\n");
 	mem::initialize();
+	VirtTerm *svt = new VirtTerm(128, 96);
+	xiv::txtout = svt;
 	printf("fetching VBE...\n");
 	VBEModeInfo *vidinfo = reinterpret_cast<VBEModeInfo*>(0xc0001200);
 	printf("mapping pages...\n");
@@ -333,7 +335,6 @@ void _kernel_main() {
 		vid[y] = 0x0;
 	}
 	FramebufferText *fbt = new FramebufferText(vid, vidinfo->x_res * (vidinfo->bits_per_pixel / 8), vidinfo->bits_per_pixel);
-	xiv::txtout = fbt;
 	printf("xivix hello!\n");
 	printf("Video info: %x %dx%d : %d @%x\nMModel: %x\n",
 			vidinfo->mode_attrib,
@@ -363,6 +364,9 @@ void _kernel_main() {
 	psys.init();
 
 	pcisys->bus_dump();
+
+	fbt->render_vc(*svt);
+	xiv::txtout = fbt;
 
 	bool busy = false;
 	uint32_t nxf = _ivix_int_n + 40;
