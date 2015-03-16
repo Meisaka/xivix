@@ -68,6 +68,11 @@ namespace mem {
 		"I/O  ",
 		"NLINK"
 	};
+	
+	constexpr static int CONTROL_UNITS = 2;
+
+	int req_control(void (*)(void *, void *, uint32_t), void *);
+	int req_allocrange(void (*)(void *, uint64_t, uint32_t), void *, uint32_t);
 
 	template<int ADDRSIZE, int UNIT, bool CULL = false, class T = MemExtent>
 	class ExtentAllocator {
@@ -79,6 +84,11 @@ namespace mem {
 		constexpr static const uint32_t max_ext = ADDRSIZE / sizeof(T);
 	public:
 		ExtentAllocator() {}
+		ExtentAllocator(const ExtentAllocator&) = delete;
+		ExtentAllocator(ExtentAllocator&&) = delete;
+		ExtentAllocator& operator=(const ExtentAllocator&) = delete;
+		ExtentAllocator& operator=(ExtentAllocator&&) = delete;
+
 		void init(void * ldaddr, uint32_t adl) {
 			pbase = (T*)ldaddr;
 			pbase->flags = MX_UNSET;
@@ -94,16 +104,57 @@ namespace mem {
 			p->flags = MX_UNSET;
 			add_extent(0, adl, MX_CONTROL);
 		}
+		static void add_control_callback(void * t, void * cba, uint32_t cbl) {
+			((ExtentAllocator<ADDRSIZE,UNIT,CULL,T>*)t)->add_control(cba, cbl);
+		}
+		static void add_memory_callback(void * t, uint64_t cba, uint32_t cbl) {
+			((ExtentAllocator<ADDRSIZE,UNIT,CULL,T>*)t)->add_extent(cba, cbl, MX_FREE);
+		}
+		void add_control(void * cba, uint32_t cbl) {
+			T *p = (T*)cba;
+			uint32_t c = (cbl * ADDRSIZE) - sizeof(T);
+			uint32_t sz = 0;
+			while(sz < c) {
+				p->flags = MX_EMPTY;
+				p++;
+				sz += sizeof(T);
+			}
+			sz += sizeof(T);
+			p->flags = MX_UNSET;
+			p = (T*)cba;
+			p->flags = MX_CONTROL;
+			p->length = cbl;
+			p->base = 0;
+
+			p = pcblock;
+			while(p->flags != MX_UNSET) {
+				if(p->flags == MX_LINK) {
+					p = p->next;
+				} else {
+					p++;
+				}
+			}
+			p->flags = MX_LINK;
+			p->next = cba;
+			p->length = sz;
+		}
 		void add_extent(uint64_t b, uint32_t l, uint32_t f) {
 			if(l == 0 || f == 0) return;
-			plast->base = b;
-			plast->length = l;
-			plast->flags = f;
 			if(f == MX_FREE) {
+				if(pfree->flags == MX_FREE) {
+					// if we are adding memory on the end, cull it
+					if(pfree->base + pfree->length * UNIT == b) {
+						pfree->length += l;
+						return;
+					}
+				}
 				pfree = plast;
 			} else if(f == MX_CONTROL) {
 				pcblock = plast;
 			}
+			plast->base = b;
+			plast->length = l;
+			plast->flags = f;
 			plast++;
 		}
 		T * find_extent(uint64_t b) {
@@ -181,16 +232,25 @@ namespace mem {
 			if(pfree->flags != MX_FREE) {
 				find_free_extent();
 				if(pfree->flags != MX_FREE) {
-					xiv::print("MALC: No FREE blocks\n");
-					return 0;
+					xiv::print("MMA: No FREE blocks\n");
+					if(req_allocrange(add_memory_callback, this, l)) {
+						xiv::print("MMA: Allocation fail\n");
+						return 0;
+					}
 				}
 			}
 			if(pfree->length >= l) {
 				uint64_t mm = pfree->base;
 				mark_extent(mm, l, f);
 				return mm;
+			} else {
+				if(req_allocrange(add_memory_callback, this, l) == 0) {
+					uint64_t mm = pfree->base;
+					mark_extent(mm, l, f);
+					return mm;
+				}
 			}
-			xiv::printf("MALC: Length Exceeded %d/%d\n", l, pfree->length);
+			xiv::printf("MMA: Length Exceeded %d/%d\n", l, pfree->length);
 			return 0;
 		}
 		void debug_table() {
@@ -234,9 +294,11 @@ namespace mem {
 		}
 	};
 
-	ExtentAllocator<0x1000, 1> memalloc;
-	ExtentAllocator<0x1000, 0x1000> blkalloc;
-	ExtentAllocator<0x1000, 0x1000> vpalloc;
+	constexpr int const SM_PAGE_SIZE = 0x1000;
+
+	ExtentAllocator<SM_PAGE_SIZE, 1> memalloc;
+	ExtentAllocator<SM_PAGE_SIZE, SM_PAGE_SIZE> blkalloc;
+	ExtentAllocator<SM_PAGE_SIZE, SM_PAGE_SIZE> vpalloc;
 
 	extern "C" {
 	extern uint8_t _ivix_phy_pdpt;
@@ -250,7 +312,6 @@ namespace mem {
 	PageDir *pdirs;
 	size_t const phyptr = ((&_kernel_start) - (&_kernel_load));
 	char *blockptr = reinterpret_cast<char*>(&_kernel_end);
-	char *em = reinterpret_cast<char*>(&_kernel_end + 0x10000);
 
 	void load_memmap() {
 		using namespace xiv;
@@ -282,24 +343,24 @@ namespace mem {
 		xiv::printf("Heap start: %x\n", (size_t)&_kernel_end);
 		pdirs = (PageDir*)blockptr;
 		blockptr += 0x4000;
-		blkalloc.init(blockptr, 2);
+		blkalloc.init(blockptr, CONTROL_UNITS);
 		load_memmap();
 		blkalloc.mark_extent((size_t)(&_kernel_load), (size_t)(&_kernel_end - &_kernel_start) >> 12, MX_FIXED);
 		blkalloc.allocate(4);
-		blkalloc.allocate(2);
-		blkalloc.allocate(2);
-		blkalloc.allocate(2);
+		blkalloc.allocate(CONTROL_UNITS);
+		blkalloc.allocate(CONTROL_UNITS);
+		blkalloc.allocate(CONTROL_UNITS);
 		blockptr += 0x2000;
-		memalloc.init(blockptr, 2);
+		memalloc.init(blockptr, CONTROL_UNITS);
 		blockptr += 0x2000;
-		vpalloc.init(blockptr, 2);
+		vpalloc.init(blockptr, CONTROL_UNITS);
 		vpalloc.add_extent(0xc0000000, 0xffff, MX_FREE);
 		vpalloc.mark_extent(0xc0000000, 0x100, MX_FIXED);
 		vpalloc.mark_extent((size_t)(&_kernel_start), (size_t)(&_kernel_end - &_kernel_start) >> 12, MX_FIXED);
 		vpalloc.allocate(4);
-		vpalloc.allocate(2);
-		vpalloc.allocate(2);
-		vpalloc.allocate(2);
+		vpalloc.allocate(CONTROL_UNITS);
+		vpalloc.allocate(CONTROL_UNITS);
+		vpalloc.allocate(CONTROL_UNITS);
 
 		uint32_t i;
 		for(i = 0; i < 2; i++) {
@@ -351,6 +412,20 @@ namespace mem {
 	void * request(size_t, void*, uint64_t, uint32_t) {
 		return nullptr;
 	}
+	int req_control(void (*)(void *, void *, uint32_t), void *) {
+		return 0;
+	}
+	int req_allocrange(void (*allocadd)(void *, uint64_t, uint32_t), void * t, uint32_t ml) {
+		xiv::print("MEM: Request new allocation blocks\n");
+		uint32_t mmb = (ml / SM_PAGE_SIZE) + 1;
+		if(mmb < 16) mmb = 16;
+		uint64_t ph = blkalloc.allocate(mmb);
+		if(ph == 0) return -1;
+		uint64_t bu = vpalloc.allocate(mmb);
+		if(bu == 0) return -2;
+		allocadd(t, bu, SM_PAGE_SIZE * mmb);
+		return 0;
+	}
 	void debug() {
 		blkalloc.debug_table();
 		memalloc.debug_table();
@@ -361,19 +436,16 @@ namespace mem {
 extern "C"
 void * kmalloc(size_t l) {
 	if(l > 1) {
-		void *pa = mem::em;
 		if(l & 0xf) {
 			l += 16 - (l & 0xf);
 		}
-		mem::em = mem::em + l;
-		return pa;
+		return (void*)mem::memalloc.allocate(l);
 	}
 	return nullptr;
 }
 
 extern "C"
 void * krealloc(void *, size_t) {
-	mem::blkalloc.allocate(1);
 	return nullptr;
 }
 

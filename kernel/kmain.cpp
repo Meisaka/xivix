@@ -303,13 +303,13 @@ struct VBEModeInfo {
 };
 #pragma pack(pop)
 
+VGAText lvga;
+
 extern "C" {
 void _kernel_main() {
 	using namespace xiv;
 	uint32_t k = 0;
-	VGAText *lvga = new VGAText();
-	xiv::txtout = lvga;
-	printhex((uint32_t)lvga, 32);
+	xiv::txtout = &lvga;
 	printf(" xivix Text mode hello\n");
 	mem::initialize();
 	printf("fetching VBE...\n");
@@ -343,8 +343,6 @@ void _kernel_main() {
 		 );
 
 	show_mem_map();
-	mem::debug();
-	krealloc(nullptr, 7);
 	mem::debug();
 
 	{
