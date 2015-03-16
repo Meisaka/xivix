@@ -21,6 +21,7 @@
 #include "dev/vgatext.hpp"
 #include "dev/fbtext.hpp"
 #include "dev/ps2.hpp"
+#include "dev/pci.hpp"
 
 #include "memory.hpp"
 
@@ -89,6 +90,7 @@ void print(const char* s) {
 void printdec(uint32_t d) {
 	char num[10];
 	unsigned l = 0;
+	if(!d) { putc('0'); return; }
 	while(d) {
 		num[9-l] = (d % 10) + '0';
 		d = d / 10;
@@ -355,9 +357,13 @@ void _kernel_main() {
 
 	hw::PS2 &psys = hw::PS2::dev;
 	hw::Keyboard *kb1 = new hw::Keyboard();
+	hw::PCI *pcisys = new hw::PCI();
 	kb1->lastkey2 = 0xffff;
 	psys.add_kbd(kb1);
 	psys.init();
+
+	pcisys->bus_dump();
+
 	bool busy = false;
 	uint32_t nxf = _ivix_int_n + 40;
 	bool flk = false;

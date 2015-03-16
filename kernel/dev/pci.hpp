@@ -29,7 +29,10 @@ public:
 	PCI();
 	~PCI();
 
-	static uint16_t config_readw(uint8_t bus, uint8_t slot, uint8_t func, uint8_t offset);
+	static uint16_t readw(uint8_t bus, uint8_t dev, uint8_t func, uint8_t offset);
+	static uint32_t readl(uint8_t bus, uint8_t dev, uint8_t func, uint8_t offset);
+	void dev_dump(uint8_t);
+	void bus_dump();
 };
 
 } // ns hw
