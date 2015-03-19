@@ -76,37 +76,72 @@ uint32_t readl(uint8_t b, uint8_t d, uint8_t f, uint8_t o) {
 	_ix_outl(0x0cf8, dva);
 	return _ix_inl(0xcfc);
 }
+void writel(uint32_t val, uint8_t b, uint8_t d, uint8_t f, uint8_t o) {
+	uint32_t dva = (1 << 31) | (b << 16) | (d << 11) | (f << 8) | (o & ~3);
+	_ix_outl(0x0cf8, dva);
+	_ix_outl(0xcfc, val);
+}
+
+void scanbar(uint8_t b, uint8_t d, uint8_t f, uint32_t bar, uint32_t &r, uint32_t &sz) {
+	if(bar > 5) return;
+	bar = 0x10 + (bar << 2);
+	uint32_t lr, lsz;
+	lr = readl(b, d, f, bar);
+	writel(0xffffffff, b, d, f, bar);
+	lsz = readl(b, d, f, bar);
+	writel(lr, b, d, f, bar);
+	lsz &= (lr & 1)? 0xfffffffc : 0xfffffff0;
+	lsz = ~lsz + 1;
+	r = lr; sz = lsz;
+}
+
+void dev_fn_check(uint8_t bus, uint8_t dev, uint8_t fn) {
+	Multiword info, dcl, hci, ex;
+	uint32_t bar[6];
+	uint32_t msz[6];
+	info.w = readl(bus, dev, fn, 0);
+	dcl.w = readl(bus, dev, fn, 0x8);
+	hci.w = readl(bus, dev, 0, 0xC);
+	xiv::printf("PCI %d/%d/%d - %x:%x ", bus, dev, fn, info.h[0], info.h[1]);
+	if((hci.b[2] & 0x7f) == 0x01 && dcl.h[1] == 0x0604) {
+		ex.w = readl(bus, dev, fn, 0x18);
+		xiv::printf("bus: %x **nxt: %d\n", ex.w, ex.b[1]);
+		dev_dump(ex.b[1]);
+	} else if((hci.b[2] & 0x7f) == 0x00) {
+		xiv::printf("mf: %x [%x] - ", hci.b[2], dcl.h[1]);
+		xiv::print(get_class(dcl.b[3]));
+		scanbar(bus, dev, fn, 0, bar[0], msz[0]);
+		scanbar(bus, dev, fn, 1, bar[1], msz[1]);
+		scanbar(bus, dev, fn, 2, bar[2], msz[2]);
+		scanbar(bus, dev, fn, 3, bar[3], msz[3]);
+		scanbar(bus, dev, fn, 4, bar[4], msz[4]);
+		scanbar(bus, dev, fn, 5, bar[5], msz[5]);
+		xiv::printf("  **%x:%x:%x", bar[0], bar[1], bar[2]);
+		xiv::printf(" %x:%x:%x", bar[3], bar[4], bar[5]);
+		//v::printf(" (%x:%x:%x)", msz[0], msz[1], msz[2]);
+		xiv::putc(10);
+	} else {
+		xiv::printf("other: %x [%x] - ", hci.b[2], dcl.h[1]);
+		xiv::print(get_class(dcl.b[3]));
+		xiv::putc(10);
+	}
+}
 
 void dev_dump(uint8_t bus) {
 	for(int i = 0; i < 31; i++) {
-		Multiword info, dcl, hci, ex;
+		Multiword info, hci;
 		info.w = readl(bus, i, 0, 0);
 		if(info.h[0] != 0xffff) {
-			dcl.w = readl(bus, i, 0, 0x8);
 			hci.w = readl(bus, i, 0, 0xC);
 			if(hci.b[2] & 0x80) {
 				for(int fn = 0; fn < 8; fn++) {
-				info.w = readl(bus, i, fn, 0);
-				if(info.h[1] != 0xffff) {
-				dcl.w = readl(bus, i, fn, 0x8);
-				if((hci.b[2] & 0x7f) == 0x01 && dcl.h[1] == 0x0604) {
-					ex.w = readl(bus, i, fn, 0x18);
-					xiv::printf("PCI %d/%d/%d - %x:%x ", bus, i, fn, info.h[0], info.h[1]);
-					xiv::printf("bus: %x nxt: %d\n", ex.w, ex.b[1]);
-					dev_dump(ex.b[1]);
-				} else {
-					xiv::printf("PCI %d/%d/%d - %x:%x ", bus, i, fn, info.h[0], info.h[1]);
-					xiv::printf("mf: [%x] - ", dcl.h[1]);
-					xiv::print(get_class(dcl.b[3]));
-					xiv::putc(10);
+					info.w = readl(bus, i, fn, 0);
+					if(info.h[1] != 0xffff) {
+						dev_fn_check(bus, i, fn);
 					}
 				}
-				}
 			} else {
-			xiv::printf("PCI %d/%d - %x:%x ", bus, i, info.h[0], info.h[1]);
-			xiv::printf("[%x] - ", dcl.b[2]);
-			xiv::print(get_class(dcl.b[3]));
-			xiv::putc(10);
+				dev_fn_check(bus, i, 0);
 			}
 		}
 	}
