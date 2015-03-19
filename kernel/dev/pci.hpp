@@ -22,20 +22,20 @@
 
 #include "ktypes.hpp"
 
-namespace hw {
+namespace pci {
+
+uint16_t readw(uint8_t bus, uint8_t dev, uint8_t func, uint8_t offset);
+uint32_t readl(uint8_t bus, uint8_t dev, uint8_t func, uint8_t offset);
+void dev_dump(uint8_t);
+void bus_dump();
 
 class PCI final {
 public:
 	PCI();
 	~PCI();
-
-	static uint16_t readw(uint8_t bus, uint8_t dev, uint8_t func, uint8_t offset);
-	static uint32_t readl(uint8_t bus, uint8_t dev, uint8_t func, uint8_t offset);
-	void dev_dump(uint8_t);
-	void bus_dump();
 };
 
-} // ns hw
+} // ns pci
 
 #endif
 

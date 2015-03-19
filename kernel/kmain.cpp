@@ -67,12 +67,17 @@ size_t strlen(char *p) {
 namespace xiv {
 
 static TextIO *txtout = nullptr;
+static VirtTerm *txtvc = nullptr;
+static FramebufferText *txtfb = nullptr;
 
 void putc(char c) {
 	if(txtout == nullptr) return;
 	switch(c) {
 	case 10:
 		txtout->nextline();
+		if(txtfb && txtout == txtvc) {
+			txtfb->render_vc(*txtvc);
+		}
 		break;
 	default:
 		txtout->putc(c);
@@ -335,6 +340,8 @@ void _kernel_main() {
 		vid[y] = 0x0;
 	}
 	FramebufferText *fbt = new FramebufferText(vid, vidinfo->x_res * (vidinfo->bits_per_pixel / 8), vidinfo->bits_per_pixel);
+	txtvc = svt;
+	txtfb = fbt;
 	printf("xivix hello!\n");
 	printf("Video info: %x %dx%d : %d @%x\nMModel: %x\n",
 			vidinfo->mode_attrib,
@@ -358,15 +365,13 @@ void _kernel_main() {
 
 	hw::PS2 &psys = hw::PS2::dev;
 	hw::Keyboard *kb1 = new hw::Keyboard();
-	hw::PCI *pcisys = new hw::PCI();
 	kb1->lastkey2 = 0xffff;
 	psys.add_kbd(kb1);
 	psys.init();
 
-	pcisys->bus_dump();
+	pci::bus_dump();
 
 	fbt->render_vc(*svt);
-	xiv::txtout = fbt;
 
 	bool busy = false;
 	uint32_t nxf = _ivix_int_n + 40;
@@ -434,10 +439,8 @@ void _kernel_main() {
 			uint32_t k = kb1->pop_key();
 			uint8_t ch = mapchar(k, kb1->mods);
 			if(ch) {
-				if(ch == 10) {
-				fbt->putat(fbt->getcol(), fbt->getrow(), ' ');
-				}
 				putc(ch);
+				if(ch != 10) fbt->render_vc(*svt);
 				nxf = _ivix_int_n + 10;
 				flk = true;
 				fbt->putat(fbt->getcol(), fbt->getrow(), '_');
