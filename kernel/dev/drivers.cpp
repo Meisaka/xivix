@@ -1,5 +1,5 @@
 /* ***
- * pci.hpp - class decl for PCI bus driver
+ * drivers.cpp - kernel driver instancing
  * Copyright (C) 2014-2015  Meisaka Yukara
  *
  *
@@ -16,45 +16,37 @@
  * with this program; if not, write to the Free Software Foundation, Inc.,
  *     51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
+#include "hwtypes.hpp"
+#include "ktext.hpp"
+#include "pci.hpp"
 
-#ifndef PCI_HAI
-#define PCI_HAI
+#include "e1000.hpp"
 
-#include "ktypes.hpp"
+namespace hw {
+void init() {
+}
+
+}
 
 namespace pci {
 
-uint16_t readw(uint8_t bus, uint8_t dev, uint8_t func, uint8_t offset);
-uint32_t readl(uint8_t bus, uint8_t dev, uint8_t func, uint8_t offset);
-uint32_t readl(uint32_t pcia, uint8_t offset);
-void dev_dump(uint8_t);
-void bus_dump();
+void instance_pci(PCIBlock &dv) {
+	switch(dv.info.vendor) {
+	case 0x8086:
+		switch(dv.info.device) {
+		case 0x10D3:
+			new hw::e1000(dv);
+			break;
+		default:
+			xiv::printf("DVM: Unhandled: %x:%x\n", dv.info.vendor, dv.info.device);
+			break;
+		}
+		break;
+	default:
+		xiv::printf("DVM: Unhandled vender: %x\n", dv.info.vendor);
+		break;
+	}
+}
 
-struct PCIInfo {
-	uint16_t vendor;
-	uint16_t device;
-	uint8_t devclass;
-	uint8_t subclass;
-	uint8_t progif;
-	uint8_t revision;
-	uint16_t subsys_vendor;
-	uint16_t subsys_device;
-};
-
-struct PCIBlock {
-	uint32_t pciaddr;
-	uint32_t bar[6];
-	uint32_t barsz[6];
-	PCIInfo info;
-};
-
-class PCI final {
-public:
-	PCI();
-	~PCI();
-};
-
-} // ns pci
-
-#endif
+}
 

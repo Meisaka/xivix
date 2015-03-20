@@ -18,6 +18,7 @@
  */
 
 #include "pci.hpp"
+#include "drivers.hpp"
 #include "kio.hpp"
 #include "ktext.hpp"
 
@@ -76,8 +77,18 @@ uint32_t readl(uint8_t b, uint8_t d, uint8_t f, uint8_t o) {
 	_ix_outl(0x0cf8, dva);
 	return _ix_inl(0xcfc);
 }
+uint32_t readl(uint32_t pcia, uint8_t o) {
+	uint32_t dva = (pcia & 0xffffff00) | (o & ~3);
+	_ix_outl(0x0cf8, dva);
+	return _ix_inl(0xcfc);
+}
 void writel(uint32_t val, uint8_t b, uint8_t d, uint8_t f, uint8_t o) {
 	uint32_t dva = (1 << 31) | (b << 16) | (d << 11) | (f << 8) | (o & ~3);
+	_ix_outl(0x0cf8, dva);
+	_ix_outl(0xcfc, val);
+}
+void writel(uint32_t val, uint32_t pcia, uint8_t o) {
+	uint32_t dva = (pcia & 0xffffff00) | (o & ~3);
 	_ix_outl(0x0cf8, dva);
 	_ix_outl(0xcfc, val);
 }
@@ -97,29 +108,33 @@ void scanbar(uint8_t b, uint8_t d, uint8_t f, uint32_t bar, uint32_t &r, uint32_
 
 void dev_fn_check(uint8_t bus, uint8_t dev, uint8_t fn) {
 	Multiword info, dcl, hci, ex;
-	uint32_t bar[6];
-	uint32_t msz[6];
+	PCIBlock cdb;
 	info.w = readl(bus, dev, fn, 0);
 	dcl.w = readl(bus, dev, fn, 0x8);
 	hci.w = readl(bus, dev, 0, 0xC);
+	cdb.info.vendor = info.h[0];
+	cdb.info.device = info.h[1];
+	cdb.info.devclass = dcl.b[3];
+	cdb.info.subclass = dcl.b[2];
+	cdb.info.progif = dcl.b[1];
+	cdb.info.revision = dcl.b[0];
 	xiv::printf("PCI %d/%d/%d - %x:%x ", bus, dev, fn, info.h[0], info.h[1]);
+	if(hci.b[2] & 0x80) xiv::print("mf-");
 	if((hci.b[2] & 0x7f) == 0x01 && dcl.h[1] == 0x0604) {
 		ex.w = readl(bus, dev, fn, 0x18);
 		xiv::printf("bus: %x **nxt: %d\n", ex.w, ex.b[1]);
 		dev_dump(ex.b[1]);
 	} else if((hci.b[2] & 0x7f) == 0x00) {
-		xiv::printf("mf: %x [%x] - ", hci.b[2], dcl.h[1]);
+		xiv::printf("dev: %x [%x] - ", hci.b[2], dcl.h[1]);
 		xiv::print(get_class(dcl.b[3]));
-		scanbar(bus, dev, fn, 0, bar[0], msz[0]);
-		scanbar(bus, dev, fn, 1, bar[1], msz[1]);
-		scanbar(bus, dev, fn, 2, bar[2], msz[2]);
-		scanbar(bus, dev, fn, 3, bar[3], msz[3]);
-		scanbar(bus, dev, fn, 4, bar[4], msz[4]);
-		scanbar(bus, dev, fn, 5, bar[5], msz[5]);
-		xiv::printf("  **%x:%x:%x", bar[0], bar[1], bar[2]);
-		xiv::printf(" %x:%x:%x", bar[3], bar[4], bar[5]);
-		//v::printf(" (%x:%x:%x)", msz[0], msz[1], msz[2]);
+		xiv::print("  **");
+		for(int x = 0; x < 6; x++) {
+			scanbar(bus, dev, fn, x, cdb.bar[x], cdb.barsz[x]);
+			xiv::printhex(cdb.bar[x]);
+			xiv::putc(':');
+		}
 		xiv::putc(10);
+		instance_pci(cdb);
 	} else {
 		xiv::printf("other: %x [%x] - ", hci.b[2], dcl.h[1]);
 		xiv::print(get_class(dcl.b[3]));

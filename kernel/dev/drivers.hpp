@@ -1,5 +1,5 @@
 /* ***
- * pci.hpp - class decl for PCI bus driver
+ * drivers.hpp - driver instancing
  * Copyright (C) 2014-2015  Meisaka Yukara
  *
  *
@@ -16,45 +16,18 @@
  * with this program; if not, write to the Free Software Foundation, Inc.,
  *     51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
+#ifndef DEV_DRIVERS_HAI
+#define DEV_DRIVERS_HAI
 
-#ifndef PCI_HAI
-#define PCI_HAI
+#include "hwtypes.hpp"
+#include "pci.hpp"
 
-#include "ktypes.hpp"
-
+namespace hw {
+void init();
+}
 namespace pci {
-
-uint16_t readw(uint8_t bus, uint8_t dev, uint8_t func, uint8_t offset);
-uint32_t readl(uint8_t bus, uint8_t dev, uint8_t func, uint8_t offset);
-uint32_t readl(uint32_t pcia, uint8_t offset);
-void dev_dump(uint8_t);
-void bus_dump();
-
-struct PCIInfo {
-	uint16_t vendor;
-	uint16_t device;
-	uint8_t devclass;
-	uint8_t subclass;
-	uint8_t progif;
-	uint8_t revision;
-	uint16_t subsys_vendor;
-	uint16_t subsys_device;
-};
-
-struct PCIBlock {
-	uint32_t pciaddr;
-	uint32_t bar[6];
-	uint32_t barsz[6];
-	PCIInfo info;
-};
-
-class PCI final {
-public:
-	PCI();
-	~PCI();
-};
-
-} // ns pci
+void instance_pci(PCIBlock &);
+}
 
 #endif
 

@@ -18,6 +18,7 @@
  */
 #include "ktypes.hpp"
 #include "kio.hpp"
+#include "dev/drivers.hpp"
 #include "dev/vgatext.hpp"
 #include "dev/fbtext.hpp"
 #include "dev/ps2.hpp"
@@ -362,6 +363,8 @@ void _kernel_main() {
 		putc(' ');
 		printhex(vba, 16);
 	}
+
+	hw::init();
 
 	hw::PS2 &psys = hw::PS2::dev;
 	hw::Keyboard *kb1 = new hw::Keyboard();
