@@ -18,12 +18,15 @@
  */
 #include "e1000.hpp"
 #include "ktext.hpp"
+#include "memory.hpp"
 
 namespace hw {
 
 e1000::e1000(pci::PCIBlock &pcib) {
 	xiv::print("e1000: init...\n");
 	xiv::printf("e1000: base: %x / %x\n", pcib.bar[0], pcib.barsz[0]);
+	uint32_t *viobase = (uint32_t*)(pcib.bar[0] & 0xfffffff0);
+	mem::request(pcib.barsz[0], viobase, (uint64_t)viobase, mem::RQ_HINT | mem::RQ_RW);
 }
 
 e1000::~e1000() {

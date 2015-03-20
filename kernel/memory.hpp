@@ -46,6 +46,10 @@ namespace mem {
 		MAP_EXEC = 0x8,
 		MAP_LARGE = 0x80,
 	};
+	enum REQUEST_FLAGS : uint32_t {
+		RQ_RW = 0x2,
+		RQ_HINT = 0x1,
+	};
 
 	void initialize();
 	void debug();

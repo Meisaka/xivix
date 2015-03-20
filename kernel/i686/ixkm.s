@@ -447,6 +447,10 @@ _ive_SS:
 _ive_GP:
 .global _ive_GP
 	pusha
+	mov %esp, %eax
+	push %eax
+	add $0x24, %eax
+	push %eax
 	call _iv_regdump
 	movw $0x1C00+'G', %ax
 	movw %ax, 0xC00B8082

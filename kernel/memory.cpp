@@ -24,14 +24,19 @@
 extern "C" void _ix_loadcr3(uint32_t);
 
 namespace mem {
-	struct PageDirPtr {
-		uint64_t pdtpe[4];
-	};
 	struct PageDir {
 		uint64_t pde[512];
 	};
 	struct PageTable {
 		uint64_t pte[512];
+	};
+	struct PageTableIndex {
+		PageTable *ptp[512];
+	};
+	struct PageDirPtr {
+		uint64_t pdtpe[4];
+		PageDir *pdp[4];
+		PageTableIndex *ptip[4];
 	};
 	struct MemMap {
 		uint64_t start;
@@ -309,7 +314,6 @@ namespace mem {
 	}
 
 	PageDirPtr *pdpt;
-	PageDir *pdirs;
 	size_t const phyptr = ((&_kernel_start) - (&_kernel_load));
 	char *blockptr = reinterpret_cast<char*>(&_kernel_end);
 
@@ -341,8 +345,10 @@ namespace mem {
 		xiv::printf("Kernel %x - %x (%x)\n", &_kernel_start, &_kernel_load, phyptr);
 		xiv::printf("PDP: %x\n", (size_t)pdpt);
 		xiv::printf("Heap start: %x\n", (size_t)&_kernel_end);
-		pdirs = (PageDir*)blockptr;
-		blockptr += 0x4000;
+		pdpt->pdp[0] = (PageDir*)blockptr; blockptr += 0x1000;
+		pdpt->pdp[1] = (PageDir*)blockptr; blockptr += 0x1000;
+		pdpt->pdp[2] = (PageDir*)blockptr; blockptr += 0x1000;
+		pdpt->pdp[3] = (PageDir*)blockptr; blockptr += 0x1000;
 		blkalloc.init(blockptr, CONTROL_UNITS);
 		load_memmap();
 		blkalloc.mark_extent((size_t)(&_kernel_load), (size_t)(&_kernel_end - &_kernel_start) >> 12, MX_FIXED);
@@ -364,23 +370,23 @@ namespace mem {
 
 		uint32_t i;
 		for(i = 0; i < 2; i++) {
-			pdirs[3].pde[i] = (i << 21) | 0x83;
+			pdpt->pdp[3]->pde[i] = (i << 21) | 0x83;
 		}
 		for(; i < 512; i++) {
-			pdirs[3].pde[i] = 0;
+			pdpt->pdp[3]->pde[i] = 0;
 		}
 		for(int i = 0; i < 4; i++) {
-		pdpt->pdtpe[i] = ( ((uint32_t)(&pdirs[i])) - phyptr ) | 1;
+		pdpt->pdtpe[i] = ( ((uint32_t)(pdpt->pdp[i])) - phyptr ) | 1;
 		xiv::printf("PDP %d: ", i);
-		xiv::printhex((size_t)&pdirs[i], 32);
+		xiv::printhexx((size_t)&pdpt->pdp[i], 64);
 		xiv::putc(10);
 		}
 		_ix_loadcr3((uint32_t)&_ivix_phy_pdpt); // reset page tables
 		xiv::printf("Page directories mapped\n");
 		for(int i = 0; i < 512; i++) {
-			pdirs[0].pde[i] = 0;
-			pdirs[1].pde[i] = 0;
-			pdirs[2].pde[i] = 0;
+			pdpt->pdp[0]->pde[i] = 0;
+			pdpt->pdp[1]->pde[i] = 0;
+			pdpt->pdp[2]->pde[i] = 0;
 		}
 		xiv::printf("Page directories reset\n");
 	}
@@ -399,17 +405,52 @@ namespace mem {
 			dirptr->pde[ofs_d] = phy.m | 1ull | (uint64_t)(f & 0x9f);
 			xiv::printf("map_page %x = (%x)\n", t, dirptr->pde[ofs_d]);
 		} else {
-			//uint32_t tablebase = ((uint32_t)dirptr->pde[ofs_d]);
+			uint32_t tablebase = ((uint32_t)dirptr->pde[ofs_d]);
 			// TODO if(tablebase) not present or present large page
-			//tablebase &= 0xfffff000;
+			if((tablebase & 1) == 0) {
+				xiv::print("add pagetable\n");
+			}
+			if(tablebase & MAP_LARGE) {
+				xiv::print("large mapping exists\n");
+			} else {
+			tablebase &= 0xfffff000;
 			//PageTable *ptptr = (PageTable*)(_kernel_start + tablebase);
 			//ptptr->pte[ofs_t] = phy.m | 1 | (f & 0x1f);
+			}
 		}
 	}
-	void * alloc_pages(size_t, uint32_t) {
-		return nullptr;
+	void * alloc_pages(size_t mpc, uint32_t) {
+		xiv::print("MEM: Request real pages\n");
+		uint64_t bu = vpalloc.allocate(mpc);
+		if(bu == 0) return nullptr;
+		uint64_t ph = blkalloc.allocate(mpc);
+		if(ph == 0) return nullptr;
+		uint64_t cmpa = ph;
+		uint64_t cmva = bu;
+		for(size_t x = 0; x < mpc; x++) {
+			map_page(cmpa, (uintptr_t)cmva, MAP_RW);
+			cmpa += SM_PAGE_SIZE;
+			cmva += SM_PAGE_SIZE;
+		}
+		return (void*)bu;
 	}
-	void * request(size_t, void*, uint64_t, uint32_t) {
+	void * request(size_t sz, void* hint, uint64_t phys, uint32_t flag) {
+		uint32_t mapflag = 0;
+		if(flag & RQ_RW) {
+			mapflag |= MAP_RW;
+		}
+		if(flag & RQ_HINT) {
+			uintptr_t ba = (uintptr_t)hint;
+			uintptr_t enda = ba + (sz & ~(SM_PAGE_SIZE-1));
+			if(ba > 0xffff) {
+				do {
+					map_page(phys, ba, mapflag);
+					phys += SM_PAGE_SIZE;
+					ba += SM_PAGE_SIZE;
+				} while(ba < enda);
+				return hint;
+			}
+		}
 		return nullptr;
 	}
 	int req_control(void (*)(void *, void *, uint32_t), void *) {
@@ -428,7 +469,7 @@ namespace mem {
 	}
 	void debug() {
 		blkalloc.debug_table();
-		memalloc.debug_table();
+		//memalloc.debug_table();
 		vpalloc.debug_table();
 	}
 }
