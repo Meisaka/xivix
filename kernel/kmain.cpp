@@ -380,7 +380,7 @@ void _kernel_main() {
 		if(_ivix_int_n > nxf) {
 			nxf = _ivix_int_n + 10;
 			flk =! flk;
-			fbt->putat(fbt->getcol(), fbt->getrow(), flk?'_':' ');
+			fbt->putat(svt->getcol(), svt->getrow(), flk?'_':' ');
 		}
 		/*
 		vga.setto(65,10);
@@ -443,7 +443,7 @@ void _kernel_main() {
 				if(ch != 10) fbt->render_vc(*svt);
 				nxf = _ivix_int_n + 10;
 				flk = true;
-				fbt->putat(fbt->getcol(), fbt->getrow(), '_');
+				fbt->putat(svt->getcol(), svt->getrow(), '_');
 			}
 		}
 		if(!busy) {
