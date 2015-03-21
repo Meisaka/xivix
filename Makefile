@@ -50,14 +50,14 @@ pxe.img: pxeboot.o pxe.ld
 	@echo "[LD PXE ] "; $(ld) -T pxe.ld --oformat binary -o pxe.img pxeboot.o
 
 make/%.dep: kernel/%.cpp Makefile
-	@echo '|DEP C++|' $@ $*
+	@echo '|DEP C++|' '$@ $*'
 	@set -e; rm -f $@; \
-		$(cxx) -MM $< $(CXXFLAGS) | sed 's,\($*\)\.o[ :]*,make/\1\.o $@ : ,g' > $@
+		$(cxx) -MM $< $(CXXFLAGS) -MT make/$*.o -MT $@ > $@
 
 make/%.dep: kernel/%.c Makefile
-	@echo '|DEP C  | ' $@ $*
+	@echo '|DEP C  | ' '$@ $*'
 	@set -e; rm -f $@; \
-		$(cc) -MM $< $(CXXFLAGS) | sed 's,\($*\)\.o[ :]*,make/\1\.o $@ : ,g' > $@
+		$(cc) -MM $< $(CXXFLAGS) -MT make/$*.o -MT $@ > $@
 
 include $(KDEP)
 
