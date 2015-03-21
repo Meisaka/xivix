@@ -314,6 +314,13 @@ namespace mem {
 	}
 
 	PageDirPtr *pdpt;
+	static uint32_t tablefreeblocks;
+	union ChainPtr {
+		ChainPtr *next;
+		uint8_t block[SM_PAGE_SIZE];
+	};
+	static ChainPtr *blockfreeptr;
+
 	size_t const phyptr = ((&_kernel_start) - (&_kernel_load));
 	char *blockptr = reinterpret_cast<char*>(&_kernel_end);
 
@@ -345,14 +352,20 @@ namespace mem {
 		xiv::printf("Kernel %x - %x (%x)\n", &_kernel_start, &_kernel_load, phyptr);
 		xiv::printf("PDP: %x\n", (size_t)pdpt);
 		xiv::printf("Heap start: %x\n", (size_t)&_kernel_end);
+		tablefreeblocks = 0;
+		blockfreeptr = nullptr;
 		pdpt->pdp[0] = (PageDir*)blockptr; blockptr += 0x1000;
 		pdpt->pdp[1] = (PageDir*)blockptr; blockptr += 0x1000;
 		pdpt->pdp[2] = (PageDir*)blockptr; blockptr += 0x1000;
 		pdpt->pdp[3] = (PageDir*)blockptr; blockptr += 0x1000;
+		pdpt->ptip[0] = (PageTableIndex*)blockptr; blockptr += 0x1000;
+		pdpt->ptip[1] = (PageTableIndex*)blockptr; blockptr += 0x1000;
+		pdpt->ptip[2] = (PageTableIndex*)blockptr; blockptr += 0x1000;
+		pdpt->ptip[3] = (PageTableIndex*)blockptr; blockptr += 0x1000;
 		blkalloc.init(blockptr, CONTROL_UNITS);
 		load_memmap();
 		blkalloc.mark_extent((size_t)(&_kernel_load), (size_t)(&_kernel_end - &_kernel_start) >> 12, MX_FIXED);
-		blkalloc.allocate(4);
+		blkalloc.allocate(8);
 		blkalloc.allocate(CONTROL_UNITS);
 		blkalloc.allocate(CONTROL_UNITS);
 		blkalloc.allocate(CONTROL_UNITS);
@@ -363,7 +376,7 @@ namespace mem {
 		vpalloc.add_extent(0xc0000000, 0xffff, MX_FREE);
 		vpalloc.mark_extent(0xc0000000, 0x100, MX_FIXED);
 		vpalloc.mark_extent((size_t)(&_kernel_start), (size_t)(&_kernel_end - &_kernel_start) >> 12, MX_FIXED);
-		vpalloc.allocate(4);
+		vpalloc.allocate(8);
 		vpalloc.allocate(CONTROL_UNITS);
 		vpalloc.allocate(CONTROL_UNITS);
 		vpalloc.allocate(CONTROL_UNITS);
@@ -387,35 +400,91 @@ namespace mem {
 			pdpt->pdp[0]->pde[i] = 0;
 			pdpt->pdp[1]->pde[i] = 0;
 			pdpt->pdp[2]->pde[i] = 0;
+			pdpt->ptip[0]->ptp[i] = 0;
+			pdpt->ptip[1]->ptp[i] = 0;
+			pdpt->ptip[2]->ptp[i] = 0;
+			pdpt->ptip[3]->ptp[i] = 0;
 		}
 		xiv::printf("Page directories reset\n");
 	}
 
+	void init_page_chain(void * first, int n) {
+		if(n < 1) return;
+		if(!first) xiv::print("VMM:ERR: Bad page allocation.\n");
+		if(!blockfreeptr) {
+			blockfreeptr = (ChainPtr*)first;
+			blockfreeptr->next = nullptr;
+		}
+		ChainPtr *nextpage = blockfreeptr;
+		while(nextpage->next) {
+			nextpage = nextpage->next;
+		}
+		nextpage->next = (ChainPtr*)first;
+		nextpage = nextpage->next;
+		while(n--) {
+			if(n) {
+				nextpage->next = nextpage+1;
+			} else {
+				nextpage->next = nullptr;
+			}
+		}
+		tablefreeblocks += n;
+	}
+	uint64_t translate_page(uintptr_t t) {
+		uint32_t ofs_dp = (t >> 30) & 0x3;
+		uint32_t ofs_d = (t >> 21) & 0x1FF;
+		uint32_t ofs_t = (t >> 12) & 0x1FF;
+		PageDir *dirptr = pdpt->pdp[ofs_dp];
+		if(!dirptr) return 0;
+		uint64_t tablebase = dirptr->pde[ofs_d];
+		if(!(tablebase & 1)) return 0;
+		if(tablebase & MAP_LARGE) {
+			return (tablebase & ~0x1ffffful) | (t & 0x1ffffful);
+		}
+		PageTable *ptptr = pdpt->ptip[ofs_dp]->ptp[ofs_d];
+		if(!ptptr) return 0;
+		return (ptptr->pte[ofs_t] & ~0xffful) | (t & 0xffful);
+	}
 	void map_page(phyaddr_t phy, uintptr_t t, uint32_t f) {
 		uint32_t ofs_dp = (t >> 30) & 0x3;
 		uint32_t ofs_d = (t >> 21) & 0x1FF;
 		uint32_t ofs_t = (t >> 12) & 0x1FF;
-		size_t const phyptr = ((&_kernel_start) - (&_kernel_load));
-		uint32_t dirbase = ((uint32_t)pdpt->pdtpe[ofs_dp]);
-		dirbase &= 0xfffff000;
-		PageDir *dirptr = (PageDir*)(dirbase + phyptr);
-		xiv::printf("T/%x/%x/%x/", ofs_dp, ofs_d, ofs_t);
+		PageDir *dirptr = pdpt->pdp[ofs_dp];
 		if(f & MAP_LARGE) {
 			xiv::printhex((size_t)&dirptr->pde[ofs_d], 32);
 			dirptr->pde[ofs_d] = phy.m | 1ull | (uint64_t)(f & 0x9f);
 			xiv::printf("map_page %x = (%x)\n", t, dirptr->pde[ofs_d]);
 		} else {
-			uint32_t tablebase = ((uint32_t)dirptr->pde[ofs_d]);
+			uint64_t tablebase = dirptr->pde[ofs_d];
 			// TODO if(tablebase) not present or present large page
-			if((tablebase & 1) == 0) {
-				xiv::print("add pagetable\n");
-			}
 			if(tablebase & MAP_LARGE) {
-				xiv::print("large mapping exists\n");
+				// ignore large mapping overwrite
 			} else {
-			tablebase &= 0xfffff000;
-			//PageTable *ptptr = (PageTable*)(_kernel_start + tablebase);
-			//ptptr->pte[ofs_t] = phy.m | 1 | (f & 0x1f);
+				PageTableIndex *pti = pdpt->ptip[ofs_dp];
+				if(!pti) {
+					xiv::print("VMM:ERR: Table Index not exist.");
+					return;
+				}
+				if(!pti->ptp[ofs_d]) {
+					xiv::printf("VMM:/%x/%x/%x/", ofs_dp, ofs_d, ofs_t);
+					xiv::print("add pagetable/");
+					if(tablefreeblocks < 2) {
+						init_page_chain(alloc_pages(16, 0), 16);
+					}
+					pti->ptp[ofs_d] = (PageTable*)blockfreeptr;
+					blockfreeptr = blockfreeptr->next;
+					tablefreeblocks--;
+					uint64_t *cpte = pti->ptp[ofs_d]->pte;
+					for(int x = 0; x < 512; x++) {
+						cpte[x] = 0;
+					}
+				}
+				if((tablebase & 1) == 0) {
+					xiv::print("map pagetable\n");
+					dirptr->pde[ofs_d] = translate_page((uintptr_t)pti->ptp[ofs_d]) | 1 | MAP_RW;
+				}
+				PageTable *ptptr = pti->ptp[ofs_d];
+				ptptr->pte[ofs_t] = phy.m | 1 | (f & 0x1f);
 			}
 		}
 	}
