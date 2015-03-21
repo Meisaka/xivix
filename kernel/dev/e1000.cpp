@@ -22,11 +22,26 @@
 
 namespace hw {
 
+static void readeeprom(uint8_t* base, uint32_t epma) {
+	volatile uint32_t *eerd = (uint32_t*)(base+0x14);
+	*eerd = 1u | (epma << 2);
+	while(!(*eerd & 0x2)) { }
+	xiv::printf("Read: %x: %x\n", epma, *eerd);
+}
+
 e1000::e1000(pci::PCIBlock &pcib) {
 	xiv::print("e1000: init...\n");
 	xiv::printf("e1000: base: %x / %x\n", pcib.bar[0], pcib.barsz[0]);
-	uint32_t *viobase = (uint32_t*)(pcib.bar[0] & 0xfffffff0);
-	mem::request(pcib.barsz[0], viobase, (uint64_t)viobase, mem::RQ_HINT | mem::RQ_RW);
+	uint64_t piobase = (pcib.bar[0] & 0xfffffff0);
+	uint8_t *viobase = (uint8_t*)(pcib.bar[0] & 0xfffffff0);
+	xiv::printhexx(piobase, 64);
+	mem::request(pcib.barsz[0], viobase, piobase, mem::RQ_HINT | mem::RQ_RW);
+	for(int x = 0; x < 8; x++) {
+	xiv::printf("Read: %x %x\n", x*4, ((uint32_t*)viobase)[x]);
+	}
+	for(uint32_t x = 0; x < 8; x++) {
+		readeeprom(viobase, x);
+	}
 }
 
 e1000::~e1000() {
