@@ -551,6 +551,7 @@ void * kmalloc(size_t l) {
 		}
 		return (void*)mem::memalloc.allocate(l);
 	}
+	xiv::print("MMA: bad size\n");
 	return nullptr;
 }
 
@@ -561,5 +562,15 @@ void * krealloc(void *, size_t) {
 
 extern "C"
 void kfree(void *) {
+}
+
+void * operator new(size_t v) {
+	return kmalloc(v);
+}
+void * operator new[](size_t v) {
+	return kmalloc(v);
+}
+void operator delete(void *d) {
+	kfree(d);
 }
 

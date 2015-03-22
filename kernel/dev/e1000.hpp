@@ -25,6 +25,11 @@
 namespace hw {
 
 class e1000 final {
+private:
+	uint32_t *viobase;
+	uint8_t macaddr[6];
+private:
+	uint16_t readeeprom(uint16_t);
 public:
 	e1000(pci::PCIBlock &);
 	~e1000();

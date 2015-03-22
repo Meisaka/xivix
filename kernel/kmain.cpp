@@ -45,16 +45,6 @@ void* malloc(size_t v) {
 void free(void *f) {
 	kfree(f);
 }
-void * operator new(size_t v) {
-	return kmalloc(v);
-}
-void * operator new[](size_t v) {
-	return kmalloc(v);
-}
-void operator delete(void *d) {
-	kfree(d);
-}
-
 void abort() {
 	_ix_totalhalt();
 }
@@ -354,7 +344,6 @@ void _kernel_main() {
 		 );
 
 	show_mem_map();
-	mem::debug();
 
 	{
 		uint16_t vba;

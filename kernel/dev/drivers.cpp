@@ -38,12 +38,10 @@ void instance_pci(PCIBlock &dv) {
 			new hw::e1000(dv);
 			break;
 		default:
-			xiv::printf("DVM: Unhandled: %x:%x\n", dv.info.vendor, dv.info.device);
 			break;
 		}
 		break;
 	default:
-		xiv::printf("DVM: Unhandled vender: %x\n", dv.info.vendor);
 		break;
 	}
 }
