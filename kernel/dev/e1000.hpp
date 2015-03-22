@@ -24,15 +24,23 @@
 
 namespace hw {
 
-class e1000 final {
+class e1000 final : public Hardware, public NetworkMAC {
 private:
 	uint32_t *viobase;
 	uint8_t macaddr[6];
+	void * descbase;
+	uint32_t rxlimit;
+	uint32_t txlimit;
+	uint32_t rxtail;
+	uint32_t txtail;
 private:
 	uint16_t readeeprom(uint16_t);
 public:
 	e1000(pci::PCIBlock &);
 	~e1000();
+	bool init() override;
+	void remove() override;
+	void transmit(void *, size_t) override;
 };
 
 }

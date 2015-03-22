@@ -23,7 +23,11 @@
 #include "e1000.hpp"
 
 namespace hw {
+
+NetworkMAC *ethdev;
+
 void init() {
+	ethdev = nullptr;
 }
 
 }
@@ -34,8 +38,10 @@ void instance_pci(PCIBlock &dv) {
 	switch(dv.info.vendor) {
 	case 0x8086:
 		switch(dv.info.device) {
-		case 0x10D3:
-			new hw::e1000(dv);
+		case 0x10D3: // 82574L
+		case 0x104B: // ICH8/9
+		case 0x10CD: // ICH10
+			hw::ethdev = new hw::e1000(dv);
 			break;
 		default:
 			break;

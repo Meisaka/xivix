@@ -16,6 +16,10 @@ struct Port {
 	virtual uint32_t port_query() = 0;
 	virtual void port_send(uint8_t c) = 0;
 };
+struct NetworkMAC {
+	virtual void transmit(void *, size_t) = 0;
+};
+
 struct MultiPortClient;
 struct MultiPortService {
 	virtual void client_send(uint32_t d, uint32_t u) = 0;
