@@ -102,32 +102,35 @@ bool Keyboard::init() {
 
 void Keyboard::key_down() {
 	switch(keycode & 0x2ffff) {
-	case 0x12:
+	case 0x12: // lShift
 		mods |= 0x01;
 		break;
-	case 0x59:
+	case 0x59: // rShift
 		mods |= 0x02;
 		break;
-	case 0x14:
+	case 0x14: // lCtrl
 		mods |= 0x04;
 		break;
-	case 0x20014:
+	case 0x20014: // rCrtl
 		mods |= 0x08;
 		break;
-	case 0x11:
+	case 0x11: // lAlt
 		mods |= 0x10;
 		break;
-	case 0x20011:
+	case 0x20011: // rAlt
 		mods |= 0x20;
 		break;
-	case 0x2001f:
+	case 0x2001f: // lMeta
 		mods |= 0x40;
 		break;
-	case 0x20027:
+	case 0x20027: // rMeta
 		mods |= 0x80;
 		break;
-	case 0x2002f:
+	case 0x2002f: // App
 		mods |= 0x100;
+		break;
+	case 0x20012: // vShift
+		mods |= 0x200;
 		break;
 	}
 	push_key(keycode);
@@ -136,32 +139,35 @@ void Keyboard::key_down() {
 
 void Keyboard::key_up() {
 	switch(keycode & 0x2ffff) {
-	case 0x12:
+	case 0x12: // lShift
 		mods ^= mods & 0x01;
 		break;
-	case 0x59:
+	case 0x59: // rShift
 		mods ^= mods & 0x02;
 		break;
-	case 0x14:
+	case 0x14: // lCtrl
 		mods ^= mods & 0x04;
 		break;
-	case 0x20014:
+	case 0x20014: // rCrtl
 		mods ^= mods & 0x08;
 		break;
-	case 0x11:
+	case 0x11: // lAlt
 		mods ^= mods & 0x10;
 		break;
-	case 0x20011:
+	case 0x20011: // rAlt
 		mods ^= mods & 0x20;
 		break;
-	case 0x2001f:
+	case 0x2001f: // lMeta
 		mods ^= mods & 0x40;
 		break;
-	case 0x20027:
+	case 0x20027: // rMeta
 		mods ^= mods & 0x80;
 		break;
-	case 0x2002f:
+	case 0x2002f: // App
 		mods ^= mods & 0x100;
+		break;
+	case 0x20012: // vShift
+		mods ^= mods & 0x200;
 		break;
 	}
 	push_key(keycode);

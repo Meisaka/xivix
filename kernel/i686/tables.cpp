@@ -18,6 +18,7 @@
  */
 
 #include <stdint.h>
+#include "interrupt.hpp"
 
 #pragma pack(push, 1)
 struct GDTEntry {
@@ -109,9 +110,7 @@ enum PRIVLVL {
 	RING_3 = 3,
 };
 
-typedef void (*InteruptEntry)(void);
-
-IDTEntry IDTTrap(InteruptEntry base, uint16_t seg, int p) {
+IDTEntry IDTTrap(uintptr_t base, uint16_t seg, int p) {
 	return IDTEntry {
 		(uint16_t)(((uint32_t)base) & 0xffff),
 		seg,
@@ -121,7 +120,7 @@ IDTEntry IDTTrap(InteruptEntry base, uint16_t seg, int p) {
 		(uint16_t)(((uint32_t)base) >> 16)
 	};
 }
-IDTEntry IDTInt(InteruptEntry base, uint16_t seg, int p) {
+IDTEntry IDTInt(uintptr_t base, uint16_t seg, int p) {
 	return IDTEntry {
 		(uint16_t)(((uint32_t)base) & 0xffff),
 		seg,
@@ -149,6 +148,10 @@ struct IDTPtr {
 
 #pragma pack(pop)
 
+extern "C" {
+	IntrDef xiv_intrpt[32];
+	ExceptDef xiv_except[32];
+};
 
 extern "C" {
 struct GDTEntry gdt_data[256] = {

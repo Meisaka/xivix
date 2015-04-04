@@ -59,13 +59,6 @@ _ivix_int_n:
 .global _ivix_int_n
 .int 0
 
-_ivix_irq1_fn:
-.int 0
-.global _ivix_irq1_fn
-_ivix_irq12_fn:
-.int 0
-.global _ivix_irq12_fn
-
 .section .ixboot,"ax"
 	.int 0xeca70433
 _ix_entry:
@@ -213,9 +206,6 @@ _iv_regdump:
 	and %edx, %edx
 	jne 1b
 3:
-	add $66, %edi
-	mov _ivix_irq1_fn, %ebx
-	call puthex32
 	pop %ebp
 	ret
 rdumpnames:
@@ -520,146 +510,108 @@ _ive_XM:
 	movw %ax, 0xC00B8082
 	popa
 	iret
+
+_iv_irqload:
+	mov %esp, %edx
+	push %eax
+	call _iv_add_n
+	mov (%esp), %eax
+	lea ivix_interrupt(,%eax,8), %esi
+	mov (%esi), %ebx
+	test %ebx, %ebx
+	je 1f
+	push %edx
+	push %eax
+	movl 4(%esi), %eax
+	push %eax
+	call *%ebx
+	add $12, %esp
+	1:
+	pop %eax
+	call _iv_irq_eoi
+	popa
+	iret
+
 _iv_irq0:
 .global _iv_irq0
 	pusha
-	call _iv_add_n
-	mov $0, %al
-	call _iv_irq_eoi
-	popa
-	iret
+	mov $0, %eax
+	jmp _iv_irqload
 _iv_irq1:
 .global _iv_irq1
 	pusha
-	call _iv_add_n
-	lea _ivix_irq1_fn, %esi
-	mov (%esi), %eax
-	test %eax, %eax
-	je 1f
-	call *%eax
-	1:
-	mov $1, %al
-	call _iv_irq_eoi
-	popa
-	iret
+	mov $1, %eax
+	jmp _iv_irqload
 _iv_irq2:
 .global _iv_irq2
 	pusha
-	call _iv_add_n
-	mov $2, %al
-	call _iv_irq_eoi
-	popa
-	iret
+	mov $2, %eax
+	jmp _iv_irqload
 _iv_irq3:
 .global _iv_irq3
 	pusha
-	call _iv_add_n
-	mov $3, %al
-	call _iv_irq_eoi
-	popa
-	iret
+	mov $3, %eax
+	jmp _iv_irqload
 _iv_irq4:
 .global _iv_irq4
 	pusha
-	call _iv_add_n
-	mov $4, %al
-	call _iv_irq_eoi
-	popa
-	iret
+	mov $4, %eax
+	jmp _iv_irqload
 _iv_irq5:
 .global _iv_irq5
 	pusha
-	call _iv_add_n
-	mov $5, %al
-	call _iv_irq_eoi
-	popa
-	iret
+	mov $5, %eax
+	jmp _iv_irqload
 _iv_irq6:
 .global _iv_irq6
 	pusha
-	call _iv_add_n
-	mov $6, %al
-	call _iv_irq_eoi
-	popa
-	iret
+	mov $6, %eax
+	jmp _iv_irqload
 _iv_irq7:
 .global _iv_irq7
 	pusha
-	call _iv_add_n
-	mov $7, %al
-	call _iv_irq_eoi
-	popa
-	iret
+	mov $7, %eax
+	jmp _iv_irqload
 _iv_irq8:
 .global _iv_irq8
 	pusha
-	call _iv_add_n
-	mov $8, %al
-	call _iv_irq_eoi
-	popa
-	iret
+	mov $8, %eax
+	jmp _iv_irqload
 _iv_irq9:
 .global _iv_irq9
 	pusha
-	call _iv_add_n
-	mov $9, %al
-	call _iv_irq_eoi
-	popa
-	iret
+	mov $9, %eax
+	jmp _iv_irqload
 _iv_irq10:
 .global _iv_irq10
 	pusha
-	call _iv_add_n
-	mov $10, %al
-	call _iv_irq_eoi
-	popa
-	iret
+	mov $10, %eax
+	jmp _iv_irqload
 _iv_irq11:
 .global _iv_irq11
 	pusha
-	call _iv_add_n
-	mov $11, %al
-	call _iv_irq_eoi
-	popa
-	iret
+	mov $11, %eax
+	jmp _iv_irqload
 _iv_irq12:
 .global _iv_irq12
 	pusha
-	call _iv_add_n
-	lea _ivix_irq12_fn, %esi
-	mov (%esi), %eax
-	test %eax, %eax
-	je 1f
-	call *%eax
-	1:
-	mov $12, %al
-	call _iv_irq_eoi
-	popa
-	iret
+	mov $12, %eax
+	jmp _iv_irqload
 _iv_irq13:
 .global _iv_irq13
 	pusha
-	call _iv_add_n
-	mov $13, %al
-	call _iv_irq_eoi
-	popa
-	iret
+	mov $13, %eax
+	jmp _iv_irqload
 _iv_irq14:
 .global _iv_irq14
 	pusha
-	call _iv_add_n
-	mov $14, %al
-	call _iv_irq_eoi
-	popa
-	iret
+	mov $14, %eax
+	jmp _iv_irqload
 _iv_irq15:
 .global _iv_irq15
 	pusha
-	call _iv_add_n
-	mov $15, %al
-	call _iv_irq_eoi
-	popa
-	iret
+	mov $15, %eax
+	jmp _iv_irqload
 _iv_irq_eoi:
 	cmp $8, %al
 	mov $0x20, %al

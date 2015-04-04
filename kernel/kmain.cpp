@@ -360,11 +360,11 @@ void _kernel_main() {
 
 	hw::init();
 
-	hw::PS2 &psys = hw::PS2::dev;
+	hw::PS2 *psys = new hw::PS2();
 	hw::Keyboard *kb1 = new hw::Keyboard();
 	kb1->lastkey2 = 0xffff;
-	psys.add_kbd(kb1);
-	psys.init();
+	psys->add_kbd(kb1);
+	psys->init();
 
 	pci::bus_dump();
 
@@ -387,8 +387,8 @@ void _kernel_main() {
 		tei[q++] = 0x00; // frag
 		tei[q++] = 0x08; // TTL
 		tei[q++] = 0xee; // Proto
-		tei[q++] = 0x00; // chksum
-		tei[q++] = 0x00;
+		tei[q++] = 0xb1; // chksum
+		tei[q++] = 0xcb;
 
 		tei[q++] = 0x00; // Src
 		tei[q++] = 0x00;
@@ -412,55 +412,9 @@ void _kernel_main() {
 			flk =! flk;
 			fbt->putat(svt->getcol(), svt->getrow(), flk?'_':' ');
 		}
-		/*
-		vga.setto(65,10);
-		printhex(kb1->state, 32);
-		vga.setto(65,11);
-		printhex(kb1->lastkey1, 32);
-		vga.setto(65,12);
-		printhex(kb1->lastkey2, 32);
-		vga.setto(65,13);
-		printhex(kb1->lastscan, 8);
-		putc(' ');
-		printhex(kb1->mods, 32);
-		vga.setto(65,14);
-		printhex(reinterpret_cast<uint32_t>(psys.kb_drv), 32);
-		vga.setto(65,15);
-		printhex(reinterpret_cast<uint32_t>(psys.port[0].cl_ptr), 32);
-		vga.setto(65,16);
-		printhex(reinterpret_cast<uint32_t>(psys.port[1].cl_ptr), 32);
-		vga.setto(65,17);
-		printhex(reinterpret_cast<uint32_t>(kb1->mp_serv), 32);
-		// */
-		//lvga->setto(51,0);
-		//printhex(_ivix_int_n, 32);
-		//lvga->setto(51,1);
-		//printhex(k, 32);
-		/*
-		vga.setto(45,21);
-		printhex(psys.err_n, 32);
-		vga.setto(55,20);
-		printhex(cast<uint32_t>(psys.port[0].status), 32);
-		vga.setto(65,20);
-		printhex(cast<uint32_t>(psys.port[1].status), 32);
-		vga.setto(55,21);
-		printhex(cast<uint32_t>(psys.port[0].type), 32);
-		vga.setto(65,21);
-		printhex(cast<uint32_t>(psys.port[1].type), 32);
-		vga.setto(55,22);
-		printhex(psys.icode[0], 8);
-		vga.setto(58,22);
-		printhex(psys.istatus[0], 8);
-		vga.setto(61,22);
-		printhex(psys.icode[1], 8);
-		vga.setto(64,22);
-		printhex(psys.istatus[1], 8);
-		vga.setto(55,23);
-		printhex(psys.interupted, 32);
-		// */
-		psys.handle();
-		if(psys.waiting()) {
-			psys.handle();
+		psys->handle();
+		if(psys->waiting()) {
+			psys->handle();
 			k++;
 			busy = true;
 		}
@@ -476,6 +430,9 @@ void _kernel_main() {
 				nxf = _ivix_int_n + 10;
 				flk = true;
 				fbt->putat(svt->getcol(), svt->getrow(), '_');
+			} else {
+				printf("KEYP:%x\\", k);
+				fbt->render_vc(*svt);
 			}
 		}
 		if(!busy) {

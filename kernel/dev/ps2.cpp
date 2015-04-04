@@ -20,31 +20,28 @@
 #include "ps2.hpp"
 #include "kio.hpp"
 #include "ktext.hpp"
+#include "interrupt.hpp"
 
 extern "C" {
-
-extern void (*_ivix_irq1_fn)(void);
-extern void (*_ivix_irq12_fn)(void);
 
 void _ix_totalhalt();
 
 }
 namespace hw {
 
-PS2 PS2::dev;
-
-
-void PS2::irq1_signal() {
-	PS2::dev.irq1_handle();
+void PS2::irq1_signal(void *u, uint32_t, ixintrctx*) {
+	if(u) ((PS2*)u)->irq1_handle();
 }
-void PS2::irq12_signal() {
-	PS2::dev.irq12_handle();
+void PS2::irq12_signal(void *u, uint32_t, ixintrctx*) {
+	if(u) ((PS2*)u)->irq12_handle();
 }
 PS2::PS2() {
 	kmd_l = 0;
 	err_n = 0;
-	_ivix_irq1_fn = PS2::irq1_signal;
-	_ivix_irq12_fn = PS2::irq12_signal;
+	ivix_interrupt[1].rlocal = this;
+	ivix_interrupt[1].entry = PS2::irq1_signal;
+	ivix_interrupt[12].rlocal = this;
+	ivix_interrupt[12].entry = PS2::irq12_signal;
 	kb_drv = nullptr;
 	for(unsigned i = 0; i < 4; i++) {
 		port[i] = {

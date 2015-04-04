@@ -4,6 +4,7 @@ ISA = i686
 PLAT = elf
 ARCH = $(ISA)-$(PLAT)
 INCL = ./kernel
+PLINCL = ./kernel/$(ISA)
 
 as := $(ARCH)-as
 ld := $(ARCH)-ld
@@ -11,7 +12,7 @@ cc := $(ARCH)-gcc
 cxx := $(ARCH)-g++
 objdump := $(ARCH)-objdump
 objcopy := $(ARCH)-objcopy
-CXXFLAGS := -std=c++11 -ffreestanding -g -iquote $(INCL) -Wall -Wextra -fno-rtti -fno-exceptions
+CXXFLAGS := -std=c++11 -ffreestanding -g -iquote $(INCL) -iquote $(PLINCL) -Wall -Wextra -fno-rtti -fno-exceptions
 KLINKFLAGS := -ffreestanding -O2 -nostdlib
 
 .PHONY: dump
