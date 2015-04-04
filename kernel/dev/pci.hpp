@@ -33,12 +33,18 @@ void bus_dump();
 struct PCIInfo {
 	uint16_t vendor;
 	uint16_t device;
-	uint8_t devclass;
-	uint8_t subclass;
-	uint8_t progif;
+	uint16_t command;
+	uint16_t status;
 	uint8_t revision;
+	uint8_t progif;
+	uint8_t subclass;
+	uint8_t devclass;
 	uint16_t subsys_vendor;
 	uint16_t subsys_device;
+	uint8_t int_line;
+	uint8_t int_pin;
+	uint8_t min_grant;
+	uint8_t max_latency;
 };
 
 struct PCIBlock {
@@ -46,6 +52,7 @@ struct PCIBlock {
 	uint32_t bar[6];
 	uint32_t barsz[6];
 	PCIInfo info;
+	void writecommand(uint16_t);
 };
 
 class PCI final {

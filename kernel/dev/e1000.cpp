@@ -63,6 +63,37 @@ union HWR_CTRL {
 	};
 };
 
+union HWR_STATUS {
+	uint32_t value;
+	struct {
+		uint32_t fd : 1;
+		uint32_t lu : 1;
+		uint32_t lanid : 2;
+		uint32_t txoff : 1;
+		uint32_t tbimode : 1;
+		uint32_t speed : 2;
+		uint32_t asdv : 2;
+		uint32_t phyra : 1;
+		uint32_t rsv0 : 1;
+		uint32_t rsv1 : 7;
+		uint32_t giomes : 1;
+		uint32_t rsv2 : 12;
+	};
+	void status() {
+		xiv::print("STATUS:");
+		if(lu) xiv::print(" LU");
+		xiv::printf(" LANID:%x", lanid);
+		if(txoff) xiv::print(" TXOFF");
+		if(tbimode) xiv::print(" TBIMODE");
+		if(asdv) xiv::print(" ASDV");
+		if(phyra) xiv::print(" PHYRA");
+		xiv::printf(" SPEED:%x", 0x10 << (speed * 4));
+		xiv::print(fd? " Full":" Half");
+		if(giomes) xiv::print(" GIOMES");
+		xiv::putc(10);
+	}
+};
+
 union HWR_TCTL {
 	uint32_t value;
 	struct {
@@ -78,6 +109,16 @@ union HWR_TCTL {
 		uint32_t nrtu : 1;
 		uint32_t rsv3 : 6;
 	};
+	void status() {
+		if(en) xiv::print("EN ");
+		if(psp) xiv::print("PSP ");
+		xiv::printf("CT=%d ", ct);
+		xiv::printf("COLD=%d ", cold);
+		if(swxoff) xiv::print("SWXOFF ");
+		if(rtlc) xiv::print("RTLC ");
+		if(nrtu) xiv::print("NRTU ");
+		xiv::putc(10);
+	}
 };
 
 #pragma pack(push, 1)
@@ -126,36 +167,38 @@ struct DESC_PAGE {
 e1000::e1000(pci::PCIBlock &pcib) {
 	xiv::print("e1000: init...\n");
 	xiv::printf("e1000: base: %x / %x\n", pcib.bar[0], pcib.barsz[0]);
+	pcib.writecommand(0x117); // enable mastering on PCI
+
+	// setup the ring buffer pages
 	uint64_t piobase = (pcib.bar[0] & 0xfffffff0);
-	viobase = (uint32_t*)(pcib.bar[0] & 0xfffffff0);
-	mem::request(pcib.barsz[0], viobase, piobase, mem::RQ_HINT | mem::RQ_RW);
+	void * vmbase = (void*)(pcib.bar[0] & 0xfffffff0);
+	viobase = (volatile uint32_t *)vmbase;
+	mem::request(pcib.barsz[0], vmbase, piobase, mem::RQ_HINT | mem::RQ_RW);
 	descbase = mem::alloc_pages(1, 0);
 	DESC_PAGE *descpage = (DESC_PAGE*)descbase;
 	uint64_t rdbuf = mem::translate_page((uint32_t)descpage->recv);
 	uint64_t txbuf = mem::translate_page((uint32_t)descpage->trmt);
+
 	// Device Control
 	HWR_CTRL r_ctrl = { .value = 0 };
+	viobase[0xd0>>2] = 0; // interrupts off
 	r_ctrl.rst = 1;
-	viobase[0] = r_ctrl.value;
+	r_ctrl.slu = 1;
+	r_ctrl.phy_rst = 1;
+	viobase[0] = r_ctrl.value; // reset everything
 	xiv::print("e1000: reset\n");
+	while(viobase[0] & (1 << 31));
 	r_ctrl.value = viobase[0];
-	xiv::printf("e1000: CTRL: %x", r_ctrl.value);
-	if(r_ctrl.slu) xiv::print(" SLU");
-	if(r_ctrl.lrst) xiv::print(" LRST");
-	if(r_ctrl.gio_dis) xiv::print(" GIOMD");
-	xiv::printf(" SPEED:%x", 0x10 << (r_ctrl.speed * 4));
-	xiv::print(r_ctrl.fd? " Full":" Half");
-	if(r_ctrl.frcspd) {
-		xiv::print(" FRCSPD");
-	}
-	if(r_ctrl.frcdplx) {
-		xiv::print(" FRCDPLX");
-	}
-	if(r_ctrl.rfce) xiv::print(" RFCE");
-	if(r_ctrl.tfce) xiv::print(" TFCE");
-	if(r_ctrl.vme) xiv::print(" VME");
-	if(r_ctrl.phy_rst) xiv::print(" PHYRST");
-	xiv::putc(10);
+	r_ctrl.slu = 1;
+	viobase[0] = r_ctrl.value; // make sure link up is set
+	HWR_STATUS dsr = { .value = viobase[8>>2] };
+	while((viobase[8>>2] & (1 << 1)) == 0); // wait link up, TODO not forever!!!1!
+	dsr.value = viobase[8>>2];
+	dsr.status();
+	xiv::printf("e1000: ICR: %x\n", viobase[0xc0>>2]);
+	viobase[0xd0>>2] = 0; // turn off interrupts again.
+	r_ctrl.value = viobase[0];
+	xiv::printf("e1000: CTRL: %x\n", r_ctrl.value);
 
 	// MAC address
 	// From EEPROM:
@@ -168,7 +211,8 @@ e1000::e1000(pci::PCIBlock &pcib) {
 	xiv::putc(10);
 
 	// Recieve Control
-	viobase[0x2800>>2] = (uint32_t)rdbuf;
+	viobase[0x100>>2] = 0x1801a; // some magic to enable receives
+	viobase[0x2800>>2] = (uint32_t)rdbuf; // setup the ring buffer
 	viobase[0x2804>>2] = (uint32_t)(rdbuf >> 32);
 	rxlimit = sizeof(DESC_PAGE::recv);
 	viobase[0x2808>>2] = rxlimit;
@@ -178,27 +222,23 @@ e1000::e1000(pci::PCIBlock &pcib) {
 	xiv::printf("e1000: TCTL: ");
 	HWR_TCTL tctl;
 	tctl.value = viobase[0x400>>2];
-	if(tctl.en) xiv::print("EN ");
-	if(tctl.psp) xiv::print("PSP ");
-	xiv::printf("CT=%d ", tctl.ct);
-	xiv::printf("COLD=%d ", tctl.cold);
-	if(tctl.swxoff) xiv::print("SWXOFF ");
-	if(tctl.rtlc) xiv::print("RTLC ");
-	if(tctl.nrtu) xiv::print("NRTU ");
-	xiv::putc(10);
-	tctl.en = 1;
+	tctl.status();
+	tctl.en = 0;
+	viobase[0x400>>2] = tctl.value; // make sure transmit is disabled.
+	viobase[0x3810>>2] = 0; // setup the descriptor ring buffer
+	viobase[0x3818>>2] = 0;
 	viobase[0x3800>>2] = (uint32_t)txbuf;
 	viobase[0x3804>>2] = (uint32_t)(txbuf>>32);
 	txlimit = sizeof(DESC_PAGE::trmt);
 	viobase[0x3808>>2] = txlimit;
 	txlimit >>= 4;
 	txtail = viobase[0x3818>>2];
-	viobase[0x400>>2] = tctl.value;
-	xiv::printf("e1000: TDBAL: %x\n", viobase[0x3800>>2]);
-	xiv::printf("e1000: TDBAH: %x\n", viobase[0x3804>>2]);
-	xiv::printf("e1000: TDLEN: %x\n", viobase[0x3808>>2]);
-	xiv::printf("e1000: TDH: %x\n", viobase[0x3810>>2]);
-	xiv::printf("e1000: TDT: %x\n", viobase[0x3818>>2]);
+	tctl.en = 1;
+	viobase[0x400>>2] = tctl.value; // enable transmitter again
+	tctl.value = viobase[0x400>>2];
+	tctl.status();
+	xiv::printf("e1000: ICR: %x\n", viobase[0xc0>>2]);
+	//viobase[0xd0>>2] = 0x02c7;
 }
 
 e1000::~e1000() {
@@ -223,7 +263,8 @@ void e1000::transmit(void * buf, size_t sz) {
 	++txtail;
 	if(txtail >= txlimit) txtail = 0;
 	viobase[0x3818>>2] = txtail;
-	xiv::printf("e1000: TX-Frame %d\n", sz);
+	uint32_t icr = viobase[0xc0>>2];
+	if(icr) xiv::printf("e1000: ICR: %x\n", icr);
 }
 
 }

@@ -38,6 +38,8 @@ void instance_pci(PCIBlock &dv) {
 	switch(dv.info.vendor) {
 	case 0x8086:
 		switch(dv.info.device) {
+		case 0x100F: // 82545EM
+		case 0x100E: // 82540EM
 		case 0x10D3: // 82574L
 		case 0x104B: // ICH8/9
 		case 0x10CD: // ICH10

@@ -92,6 +92,9 @@ void writel(uint32_t val, uint32_t pcia, uint8_t o) {
 	_ix_outl(0x0cf8, dva);
 	_ix_outl(0xcfc, val);
 }
+void PCIBlock::writecommand(uint16_t c) {
+	writel(c, this->pciaddr, 0x4);
+}
 
 void scanbar(uint8_t b, uint8_t d, uint8_t f, uint32_t bar, uint32_t &r, uint32_t &sz) {
 	if(bar > 5) return;
@@ -107,25 +110,34 @@ void scanbar(uint8_t b, uint8_t d, uint8_t f, uint32_t bar, uint32_t &r, uint32_
 }
 
 void dev_fn_check(uint8_t bus, uint8_t dev, uint8_t fn) {
-	Multiword info, dcl, hci, ex;
+	Multiword info, cmst, dcl, hci, ex, iir;
 	PCIBlock cdb;
-	info.w = readl(bus, dev, fn, 0);
-	dcl.w = readl(bus, dev, fn, 0x8);
+	cdb.pciaddr = (1 << 31) | (bus << 16) | (dev << 11) | (fn << 8);
+	info.w = readl(cdb.pciaddr, 0);
+	cmst.w = readl(cdb.pciaddr, 0x4);
+	dcl.w = readl(cdb.pciaddr, 0x8);
 	hci.w = readl(bus, dev, 0, 0xC);
+	iir.w = readl(cdb.pciaddr, 0x3C);
 	cdb.info.vendor = info.h[0];
 	cdb.info.device = info.h[1];
-	cdb.info.devclass = dcl.b[3];
-	cdb.info.subclass = dcl.b[2];
-	cdb.info.progif = dcl.b[1];
+	cdb.info.command = cmst.h[0];
+	cdb.info.status = cmst.h[1];
 	cdb.info.revision = dcl.b[0];
+	cdb.info.progif = dcl.b[1];
+	cdb.info.subclass = dcl.b[2];
+	cdb.info.devclass = dcl.b[3];
+	cdb.info.int_line = iir.b[0];
+	cdb.info.int_pin = iir.b[1];
+	cdb.info.min_grant = iir.b[2];
+	cdb.info.max_latency = iir.b[3];
 	xiv::printf("PCI %d/%d/%d - %x:%x ", bus, dev, fn, info.h[0], info.h[1]);
 	if(hci.b[2] & 0x80) xiv::print("mf-");
 	if((hci.b[2] & 0x7f) == 0x01 && dcl.h[1] == 0x0604) {
-		ex.w = readl(bus, dev, fn, 0x18);
+		ex.w = readl(cdb.pciaddr, 0x18);
 		xiv::printf("bus: %x **nxt: %d\n", ex.w, ex.b[1]);
 		dev_dump(ex.b[1]);
 	} else if((hci.b[2] & 0x7f) == 0x00) {
-		xiv::printf("dev: %x [%x] - ", hci.b[2], dcl.h[1]);
+		xiv::printf("dev: %x [%x] %x - ", hci.b[2], dcl.h[1], cdb.info.command);
 		xiv::print(get_class(dcl.b[3]));
 		xiv::print("  **");
 		for(int x = 0; x < 6; x++) {

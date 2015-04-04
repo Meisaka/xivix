@@ -26,7 +26,7 @@ namespace hw {
 
 class e1000 final : public Hardware, public NetworkMAC {
 private:
-	uint32_t *viobase;
+	volatile uint32_t *viobase;
 	uint8_t macaddr[6];
 	void * descbase;
 	uint32_t rxlimit;
