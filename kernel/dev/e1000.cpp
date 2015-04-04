@@ -61,6 +61,25 @@ union HWR_CTRL {
 		uint32_t vme : 1;
 		uint32_t phy_rst : 1;
 	};
+	void status() {
+		xiv::print("CTRL:");
+		if(slu) xiv::print(" SLU");
+		if(lrst) xiv::print(" LRST");
+		if(gio_dis) xiv::print(" GIOMD");
+		xiv::printf(" SPEED:%x", 0x10 << (speed * 4));
+		xiv::print(fd? " Full":" Half");
+		if(frcspd) {
+			xiv::print(" FRCSPD");
+		}
+		if(frcdplx) {
+			xiv::print(" FRCDPLX");
+		}
+		if(rfce) xiv::print(" RFCE");
+		if(tfce) xiv::print(" TFCE");
+		if(vme) xiv::print(" VME");
+		if(phy_rst) xiv::print(" PHYRST");
+		xiv::putc(10);
+	}
 };
 
 union HWR_STATUS {
