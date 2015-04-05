@@ -122,6 +122,13 @@ _ivix_phy_pdpt:
 
 .text
 _kernel_entry:
+	mov $.bss, %edi
+	mov $_kernel_end, %ecx  # zero out teh .bss
+	sub %edi, %ecx
+	shr $2, %ecx
+	xor %eax, %eax
+	rep stosl %eax, (%edi)
+	
 	mov $ixstk, %esp
 	lgdt _ivix_gdt_ptr	# load GDT
 	call _ix_makeidt	# make and load IDT
@@ -682,6 +689,55 @@ _ix_inl:
 	mov 4(%esp), %edx
 	xor %eax, %eax
 	inl %dx, %eax
+	ret
+
+_ixa_inc:
+	.global _ixa_inc
+	.type _ixa_inc,@function
+	mov 4(%esp), %eax
+	lock incl (%eax)
+	ret
+
+_ixa_dec:
+	.global _ixa_dec
+	.type _ixa_dec,@function
+	mov 4(%esp), %eax
+	lock decl (%eax)
+	ret
+
+_ixa_or:
+	.global _ixa_or
+	.type _ixa_or,@function
+	mov 4(%esp), %edx
+	mov 8(%esp), %eax
+	lock or %eax, (%edx)
+	ret
+
+_ixa_xor:
+	.global _ixa_xor
+	.type _ixa_xor,@function
+	mov 4(%esp), %edx
+	mov 8(%esp), %eax
+	lock xor %eax, (%edx)
+	ret
+
+_ixa_xchg:
+	.global _ixa_xchg
+	.type _ixa_xchg,@function
+	mov 4(%esp), %edx
+	mov 8(%esp), %eax
+	lock xchg %eax, (%edx)
+	ret
+
+_ixa_cmpxchg:
+	.global _ixa_cmpxchg
+	.type _ixa_cmpxchg,@function
+	push %ebp
+	mov 0x8(%esp), %edx
+	mov 0xc(%esp), %eax
+	mov 0x10(%esp), %ebp
+	lock cmpxchg %ebp, (%edx)
+	pop %ebp
 	ret
 
 _ix_makeidt:

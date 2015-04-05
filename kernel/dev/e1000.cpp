@@ -18,7 +18,9 @@
  */
 #include "e1000.hpp"
 #include "ktext.hpp"
+#include "kio.hpp"
 #include "memory.hpp"
+#include "interrupt.hpp"
 
 namespace hw {
 
@@ -29,6 +31,7 @@ uint16_t e1000::readeeprom(uint16_t epma) {
 	return (uint16_t)(*eerd >> 16);
 }
 
+#pragma pack(push, 1)
 union HWR_CTRL {
 	uint32_t value;
 	struct {
@@ -81,7 +84,6 @@ union HWR_CTRL {
 		xiv::putc(10);
 	}
 };
-
 union HWR_STATUS {
 	uint32_t value;
 	struct {
@@ -112,7 +114,28 @@ union HWR_STATUS {
 		xiv::putc(10);
 	}
 };
-
+union HWR_IMS {
+	uint32_t value;
+	struct {
+		uint32_t txdw : 1;
+		uint32_t txqe : 1;
+		uint32_t lsc : 1;
+		uint32_t rxseq : 1;
+		uint32_t rxdmt0 : 1;
+		uint32_t rsv0 : 1;
+		uint32_t rxo : 1;
+		uint32_t rxt0 : 1;
+		uint32_t rsv1 : 1;
+		uint32_t mdac : 1;
+		uint32_t rxcfg : 1;
+		uint32_t rsv2 : 1;
+		uint32_t phyint : 1;
+		uint32_t gpi : 2;
+		uint32_t txd_low : 1;
+		uint32_t srpd : 1;
+		uint32_t rsv3 : 15;
+	};
+};
 union HWR_TCTL {
 	uint32_t value;
 	struct {
@@ -139,8 +162,6 @@ union HWR_TCTL {
 		xiv::putc(10);
 	}
 };
-
-#pragma pack(push, 1)
 struct RECV_DESC {
 	uint64_t address;
 	uint16_t len;
@@ -183,9 +204,23 @@ struct DESC_PAGE {
 };
 #pragma pack(pop)
 
+void e1000_intcall(void * u, uint32_t, ixintrctx *) {
+	if(u) {
+		((e1000*)u)->handle_int();
+	}
+}
+
+uint32_t e1000::handle_int() {
+	uint32_t its = viobase[0xc0>>2];
+	_ixa_or(&lastint, its);
+	return 0;
+}
+
 e1000::e1000(pci::PCIBlock &pcib) {
 	xiv::print("e1000: init...\n");
 	xiv::printf("e1000: base: %x / %x\n", pcib.bar[0], pcib.barsz[0]);
+	xiv::printf("e1000: intr: %x / %x\n", pcib.info.int_line, pcib.info.int_pin);
+	lastint = 0;
 	pcib.writecommand(0x117); // enable mastering on PCI
 
 	// setup the ring buffer pages
@@ -197,9 +232,11 @@ e1000::e1000(pci::PCIBlock &pcib) {
 	DESC_PAGE *descpage = (DESC_PAGE*)descbase;
 	uint64_t rdbuf = mem::translate_page((uint32_t)descpage->recv);
 	uint64_t txbuf = mem::translate_page((uint32_t)descpage->trmt);
+	ivix_interrupt[pcib.info.int_line] = { .entry = e1000_intcall, .rlocal = this };
 
 	// Device Control
 	HWR_CTRL r_ctrl = { .value = 0 };
+	HWR_IMS ims = { .value = 0 };
 	viobase[0xd0>>2] = 0; // interrupts off
 	r_ctrl.rst = 1;
 	r_ctrl.slu = 1;
@@ -214,7 +251,7 @@ e1000::e1000(pci::PCIBlock &pcib) {
 	while((viobase[8>>2] & (1 << 1)) == 0); // wait link up, TODO not forever!!!1!
 	dsr.value = viobase[8>>2];
 	dsr.status();
-	xiv::printf("e1000: ICR: %x\n", viobase[0xc0>>2]);
+	xiv::printf("e1000: ICR: %x\n", _ixa_xchg(&lastint, 0));
 	viobase[0xd0>>2] = 0; // turn off interrupts again.
 	r_ctrl.value = viobase[0];
 	xiv::printf("e1000: CTRL: %x\n", r_ctrl.value);
@@ -230,7 +267,7 @@ e1000::e1000(pci::PCIBlock &pcib) {
 	xiv::putc(10);
 
 	// Recieve Control
-	viobase[0x100>>2] = 0x1801a; // some magic to enable receives
+	viobase[0x100>>2] = 0x18018; // some magic to enable receives
 	viobase[0x2800>>2] = (uint32_t)rdbuf; // setup the ring buffer
 	viobase[0x2804>>2] = (uint32_t)(rdbuf >> 32);
 	rxlimit = sizeof(DESC_PAGE::recv);
@@ -256,8 +293,20 @@ e1000::e1000(pci::PCIBlock &pcib) {
 	viobase[0x400>>2] = tctl.value; // enable transmitter again
 	tctl.value = viobase[0x400>>2];
 	tctl.status();
-	xiv::printf("e1000: ICR: %x\n", viobase[0xc0>>2]);
-	//viobase[0xd0>>2] = 0x02c7;
+	xiv::printf("e1000: ICR: %x\n", _ixa_xchg(&lastint, 0));
+
+	// enable interrupts
+	ims.value = 0x0;
+	ims.txdw = 1;
+	ims.txqe = 1;
+	ims.lsc = 1;
+	ims.rxseq = 1;
+	ims.rxdmt0 = 1;
+	ims.rxo = 1;
+	ims.rxt0 = 1;
+	ims.mdac = 1;
+	ims.txd_low = 1;
+	viobase[0xd0>>2] = ims.value;
 }
 
 e1000::~e1000() {
@@ -268,6 +317,8 @@ bool e1000::init() {
 void e1000::remove() {
 }
 void e1000::transmit(void * buf, size_t sz) {
+	uint32_t fint = _ixa_xchg(&lastint, 0);
+	if(fint) xiv::printf("e1000: ICR: %x\n", fint);
 	if(sz < 64) {
 		xiv::print("e1000: TX: Frame too small\n");
 		return;
@@ -278,12 +329,16 @@ void e1000::transmit(void * buf, size_t sz) {
 	txd->address = mem::translate_page((uintptr_t)buf);
 	txd->len = sz;
 	txd->dtype = 0x1;
-	txd->dcmd = 0x23;
+	txd->sta = 0;
+	txd->dcmd = 0x2b;
 	++txtail;
 	if(txtail >= txlimit) txtail = 0;
 	viobase[0x3818>>2] = txtail;
-	uint32_t icr = viobase[0xc0>>2];
-	if(icr) xiv::printf("e1000: ICR: %x\n", icr);
+}
+void e1000::addreceive(void*, size_t) {
+}
+void e1000::getmediaaddr(uint8_t *p) const {
+	for(int i = 0; i < 6; i++) p[i] = macaddr[i];
 }
 
 }

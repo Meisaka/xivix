@@ -34,6 +34,13 @@ extern "C" {
 	extern void _ix_outb(uint16_t a, uint8_t v);
 	void _ix_outw(uint16_t a, uint16_t v);
 	void _ix_outl(uint16_t a, uint32_t v);
+
+	uint32_t* _ixa_inc(uint32_t *a);
+	uint32_t* _ixa_dec(uint32_t *a);
+	uint32_t _ixa_xchg(uint32_t *a, uint32_t n);
+	void _ixa_or(uint32_t *a, uint32_t n);
+	void _ixa_xor(uint32_t *a, uint32_t n);
+	uint32_t _ixa_cmpxchg(uint32_t *a, uint32_t c, uint32_t n);
 }
 
 #endif

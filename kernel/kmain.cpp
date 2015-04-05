@@ -374,7 +374,8 @@ void _kernel_main() {
 	{
 		int q = 0;
 		for(; q < 6; q++) tei[q] = 0xff;
-		for(; q < 12; q++) tei[q] = q - 6;
+		hw::ethdev->getmediaaddr(&tei[q]);
+		q += 6;
 		tei[q++] = 0x08;
 		tei[q++] = 0x00;
 		tei[q++] = 0x45;
@@ -430,9 +431,6 @@ void _kernel_main() {
 				nxf = _ivix_int_n + 10;
 				flk = true;
 				fbt->putat(svt->getcol(), svt->getrow(), '_');
-			} else {
-				printf("KEYP:%x\\", k);
-				fbt->render_vc(*svt);
 			}
 		}
 		if(!busy) {

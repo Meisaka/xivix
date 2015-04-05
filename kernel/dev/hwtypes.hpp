@@ -18,6 +18,8 @@ struct Port {
 };
 struct NetworkMAC {
 	virtual void transmit(void *, size_t) = 0;
+	virtual void addreceive(void *, size_t) = 0;
+	virtual void getmediaaddr(uint8_t *) const = 0;
 };
 
 struct MultiPortClient;

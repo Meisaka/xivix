@@ -33,6 +33,9 @@ private:
 	uint32_t txlimit;
 	uint32_t rxtail;
 	uint32_t txtail;
+	uint32_t rxheadp;
+	uint32_t txheadp;
+	uint32_t lastint;
 private:
 	uint16_t readeeprom(uint16_t);
 public:
@@ -41,6 +44,9 @@ public:
 	bool init() override;
 	void remove() override;
 	void transmit(void *, size_t) override;
+	void addreceive(void *, size_t) override;
+	void getmediaaddr(uint8_t *) const override;
+	uint32_t handle_int();
 };
 
 }
