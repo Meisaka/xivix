@@ -336,6 +336,12 @@ void _kernel_main() {
 		vid[y] = 0x0;
 	}
 	FramebufferText *fbt = new FramebufferText(vid, vidinfo->x_res * (vidinfo->bits_per_pixel / 8), vidinfo->bits_per_pixel);
+
+	{
+		uvec2 ulr = uvec2::center_align(uvec2(128*8,96*8), uvec2(vidinfo->x_res, vidinfo->y_res));
+		fbt->setoffset(ulr.x, ulr.y);
+	}
+
 	txtvc = svt;
 	txtfb = fbt;
 	printf("xivix hello!\n");

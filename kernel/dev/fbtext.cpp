@@ -145,13 +145,16 @@ void FramebufferText::dispchar32(uint8_t c, uint32_t x, uint32_t y) {
 		e2 = rolr8(e2);
 	}
 }
-
+void FramebufferText::setoffset(uint32_t x, uint32_t y) {
+	origin.x = x;
+	origin.y = y;
+}
 void FramebufferText::render_vc(xiv::VirtTerm &vc) {
-	uint32_t xco = 0;
-	uint32_t yco = 0;
-	uint32_t ro = 0;;
+	uint32_t xco = origin.x;
+	uint32_t yco = origin.y;
+	uint32_t ro = 0;
 	for(int y = 0; y < vc.height; y++) {
-		xco = 0;
+		xco = origin.x;
 		for(int x = 0; x < vc.width; x++) {
 			dispchar32(cast<uint8_t>(vc.buffer[x+ro].code), xco, yco);
 			xco += 8;
@@ -207,7 +210,7 @@ void FramebufferText::putc(char c) {
 	}
 }
 void FramebufferText::putat(uint16_t c, uint16_t r, char v) {
-	dispchar32(cast<uint8_t>(v), c * 8, r * 8);
+	dispchar32(cast<uint8_t>(v), origin.x + (c * 8), origin.y + (r * 8));
 }
 void FramebufferText::nextline() {
 	col = 0;
