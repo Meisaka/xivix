@@ -317,9 +317,9 @@ void _kernel_main() {
 	mem::initialize();
 	VirtTerm *svt = new VirtTerm(128, 96);
 	xiv::txtout = svt;
-	printf("fetching VBE...\n");
+	printf("Fetching VBE\n");
 	VBEModeInfo *vidinfo = reinterpret_cast<VBEModeInfo*>(0xc0001200);
-	printf("mapping pages...\n");
+	printf("Mapping video pages...\n");
 	{
 		uint64_t pbase = vidinfo->phys_base;
 		uint32_t vbase = 0xd0000000;
@@ -330,8 +330,7 @@ void _kernel_main() {
 		}
 	}
 	uint32_t *vid = reinterpret_cast<uint32_t*>(0xd0000000);
-	printf("display clear...\n");
-	printhex(*vid);
+	printf("Display clear\n");
 	for(uint32_t y = 0; y < 102400; y++) {
 		vid[y] = 0x0;
 	}
@@ -344,7 +343,6 @@ void _kernel_main() {
 
 	txtvc = svt;
 	txtfb = fbt;
-	printf("xivix hello!\n");
 	printf("Video info: %x %dx%d : %d @%x\nMModel: %x\n",
 			vidinfo->mode_attrib,
 			vidinfo->x_res,
@@ -356,13 +354,7 @@ void _kernel_main() {
 
 	show_mem_map();
 
-	{
-		uint16_t vba;
-		_ix_outw(0x1CE, 0);
-		vba = _ix_inw(0x1cf);
-		putc(' ');
-		printhex(vba, 16);
-	}
+	printf("  XIVIX kernel hello!\n");
 
 	hw::init();
 

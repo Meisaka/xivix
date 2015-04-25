@@ -1,5 +1,5 @@
 /* ***
- * e1000.cpp - e1000 / 8257x driver
+ * e1000.cpp - e1000 / Intel 825xx NIC driver
  * Copyright (C) 2014-2015  Meisaka Yukara
  *
  *
@@ -65,7 +65,7 @@ union HWR_CTRL {
 		uint32_t phy_rst : 1;
 	};
 	void status() {
-		xiv::print("CTRL:");
+		xiv::print("e1000: CTRL:");
 		if(slu) xiv::print(" SLU");
 		if(lrst) xiv::print(" LRST");
 		if(gio_dis) xiv::print(" GIOMD");
@@ -101,7 +101,7 @@ union HWR_STATUS {
 		uint32_t rsv2 : 12;
 	};
 	void status() {
-		xiv::print("STATUS:");
+		xiv::print("e1000: STATUS:");
 		if(lu) xiv::print(" LU");
 		xiv::printf(" LANID:%x", lanid);
 		if(txoff) xiv::print(" TXOFF");
@@ -152,13 +152,14 @@ union HWR_TCTL {
 		uint32_t rsv3 : 6;
 	};
 	void status() {
-		if(en) xiv::print("EN ");
-		if(psp) xiv::print("PSP ");
-		xiv::printf("CT=%d ", ct);
-		xiv::printf("COLD=%d ", cold);
-		if(swxoff) xiv::print("SWXOFF ");
-		if(rtlc) xiv::print("RTLC ");
-		if(nrtu) xiv::print("NRTU ");
+		xiv::print("e1000: TCTL:");
+		if(en) xiv::print(" EN");
+		if(psp) xiv::print(" PSP");
+		xiv::printf(" CT=%d", ct);
+		xiv::printf(" COLD=%d", cold);
+		if(swxoff) xiv::print(" SWXOFF");
+		if(rtlc) xiv::print(" RTLC");
+		if(nrtu) xiv::print(" NRTU");
 		xiv::putc(10);
 	}
 };
@@ -251,10 +252,9 @@ e1000::e1000(pci::PCIBlock &pcib) {
 	while((viobase[8>>2] & (1 << 1)) == 0); // wait link up, TODO not forever!!!1!
 	dsr.value = viobase[8>>2];
 	dsr.status();
-	xiv::printf("e1000: ICR: %x\n", _ixa_xchg(&lastint, 0));
 	viobase[0xd0>>2] = 0; // turn off interrupts again.
 	r_ctrl.value = viobase[0];
-	xiv::printf("e1000: CTRL: %x\n", r_ctrl.value);
+	r_ctrl.status();
 
 	// MAC address
 	// From EEPROM:
@@ -275,7 +275,6 @@ e1000::e1000(pci::PCIBlock &pcib) {
 	rxlimit >>= 4;
 	rxtail = viobase[0x2818>>2];
 	// Transmit Control
-	xiv::printf("e1000: TCTL: ");
 	HWR_TCTL tctl;
 	tctl.value = viobase[0x400>>2];
 	tctl.status();
