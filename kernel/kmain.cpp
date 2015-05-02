@@ -401,6 +401,11 @@ void _kernel_main() {
 		for(int x = 0; hai[x]; x++, q++) tei[q] = (uint8_t)hai[x];
 		if(hw::ethdev) hw::ethdev->transmit(tei, 14+70);
 	}
+	printf("Tei: %x\n", (uint32_t)tei);
+	kfree(tei);
+	tei = (uint8_t*)kmalloc(4000000);
+	printf("Tei: %x\n", (uint32_t)tei);
+	tei[3800000] = 'y';
 
 	bool busy = false;
 	uint32_t nxf = _ivix_int_n + 40;
@@ -423,8 +428,6 @@ void _kernel_main() {
 			uint8_t ch = mapchar(k, kb1->mods);
 			if(ch) {
 				putc(ch);
-				tei[44] = (uint8_t)ch;
-		if(hw::ethdev) hw::ethdev->transmit(tei, 14+70);
 				if(ch != 10) fbt->render_vc(*svt);
 				nxf = _ivix_int_n + 10;
 				flk = true;

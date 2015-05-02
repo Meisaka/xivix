@@ -57,6 +57,7 @@ namespace mem {
 		MX_UNSET,
 		MX_EMPTY,
 		MX_FREE,
+		MX_CLEAR,
 		MX_FIXED,
 		MX_CONTROL,
 		MX_ALLOC,
@@ -166,7 +167,7 @@ namespace mem {
 			T *pt = pbase;
 			while(pt->flags != MX_UNSET) {
 				if(pt->flags != MX_CONTROL) {
-					if(pt->base == b) return pt;
+					if(pt->base <= b && b < (pt->base + pt->length * UNIT)) return pt;
 				}
 				if(pt->flags == MX_LINK) {
 					pt = pt->next;
@@ -229,6 +230,29 @@ namespace mem {
 				add_extent(b, l, f);
 			}
 			if(pfree->flags != MX_FREE) find_free_extent();
+		}
+		int free(uint64_t b) {
+			T *p = find_extent(b);
+			if(!p) {
+				xiv::printf("MMA: No such block %x%x\n", b);
+				return -1;
+			}
+			if(p->base != b) {
+				xiv::print("MMA: Mid block free\n");
+				return -1;
+			}
+			if(p->flags == MX_FREE) {
+				xiv::print("MMA: Double free\n");
+				return -1;
+			}
+			if(p->flags == MX_CONTROL) {
+				xiv::print("MMA: control block free\n");
+			}
+			p->flags = MX_FREE;
+			if(pfree->base > p->base) {
+				pfree = p;
+			}
+			return 0;
 		}
 		uint64_t allocate(uint32_t l) {
 			return allocate(l, MX_ALLOC);
@@ -541,6 +565,29 @@ namespace mem {
 		//memalloc.debug_table();
 		vpalloc.debug_table();
 	}
+	void ref_destroy(size_t r) {
+		if(!r) return;
+	}
+	int ref_add(size_t r) {
+		if(!r) return 0;
+		return 0;
+	}
+	size_t ref_create(void *p, size_t z) {
+		if(!p || !z) return 0;
+		return 0;
+	}
+	int ref_lock(size_t r) {
+		if(!r) return 0;
+		return 0;
+	}
+	int ref_unlock(size_t r) {
+		if(!r) return 0;
+		return 0;
+	}
+	void * ref_getlockptr(size_t r) {
+		if(!r) return nullptr;
+		return nullptr;
+	}
 }
 
 extern "C"
@@ -561,7 +608,8 @@ void * krealloc(void *, size_t) {
 }
 
 extern "C"
-void kfree(void *) {
+void kfree(void *p) {
+	mem::memalloc.free((uintptr_t)p);
 }
 
 void * operator new(size_t v) {

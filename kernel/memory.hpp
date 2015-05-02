@@ -34,6 +34,85 @@ struct PhysicalAddress {
 	PhysicalAddress& operator=(uint64_t a) { m = a; return *this; }
 };
 
+void ref_destroy(size_t r);
+int ref_add(size_t r);
+size_t ref_create(void *, size_t);
+int ref_lock(size_t r);
+int ref_unlock(size_t r);
+void * ref_getlockptr(size_t r);
+
+template<typename T>
+class lockref final {
+private:
+	size_t r_id;
+	T *hptr;
+public:
+	lockref() : r_id(0), hptr(nullptr) {}
+	lockref(size_t i) : r_id(i) {
+		if(r_id) {
+			mem::ref_add(r_id);
+			mem::ref_lock(r_id);
+			hptr = (T*)mem::ref_getlockptr(r_id);
+		} else {
+			hptr = nullptr;
+		}
+	}
+	~lockref() {
+		if(r_id) {
+			mem::ref_unlock(r_id);
+			mem::ref_destroy(r_id);
+		}
+	}
+	lockref(const lockref<T>&) = delete;
+	lockref(lockref<T>&&) = delete;
+	lockref& operator=(const lockref<T>&) = delete;
+	lockref& operator=(lockref<T>&&) = delete;
+	T& operator*() {
+		return *hptr;
+	}
+	T& operator->() {
+		return *hptr;
+	}
+};
+
+template<typename T>
+class ref final {
+private:
+	size_t r_id;
+public:
+	ref() : r_id(0) {}
+	~ref() {
+		if(r_id) mem::ref_destroy(r_id);
+	}
+	ref(T *p) {
+		r_id = mem::ref_create(p, sizeof(T));
+	}
+	ref(const ref<T> &h) {
+		mem::ref_add(h.r_id);
+		if(r_id) mem::ref_destroy(r_id);
+		r_id = h.r_id;
+	}
+	ref(ref<T> &&h) {
+		r_id = h.r_id;
+		h.r_id = 0;
+	}
+	ref<T>& operator=(const ref<T> &h) {
+		mem::ref_add(h.r_id);
+		if(r_id) mem::ref_destroy(r_id);
+		r_id = h.r_id;
+		return *this;
+	}
+	ref<T>& operator=(ref<T> &&h) {
+		if(r_id) mem::ref_destroy(r_id);
+		r_id = h.r_id;
+		h.r_id = 0;
+		return *this;
+	}
+	lockref<T> operator*() {
+		return lockref<T>(r_id);
+	}
+};
+
 }
 
 typedef mem::PhysicalAddress phyaddr_t;
