@@ -25,19 +25,17 @@
 namespace xiv {
 
 void pfhandle(void *, uint32_t, ixexptctx *ctx) {
-	printf("Page fault! from %x\n", ctx->ih->r_eip);
-	printf("CS: %x FLAGS: %x\n", ctx->ih->r_cs, ctx->ih->r_eflag);
+	printf("Page fault! from %0x\n", ctx->ih->r_eip);
+	printf("CS: %x FLAGS: %0x\n", ctx->ih->r_cs, ctx->ih->r_eflag);
 	printf("code: %x - ", ctx->ec_1);
 	print(ctx->ec_1 & 1 ? "PROTECT " : "NONPRESENT ");
 	print(ctx->ec_1 & 4 ? "USER " : "KERNEL ");
 	print(ctx->ec_1 & 2 ? "WRITE" : " READ");
 	if(ctx->ec_1 & 8) print(" RESRVD-SET");
 	if(ctx->ec_1 & 16) print(" INS-FETCH");
-	print(" At Address ");
-	printhex(ctx->ec_2);
-	putc(10);
-	printf("EAX:%x  EBX:%x\nECX:%x  EDX:%x\n"
-		"ESI:%x  EDI:%x\nEBP:%x  ESP:%x\n",
+	printf(" At Address %0x\n", ctx->ec_2);
+	printf("EAX:%0x  EBX:%0x\nECX:%0x  EDX:%0x\n"
+		"ESI:%0x  EDI:%0x\nEBP:%0x  ESP:%0x\n",
 		ctx->ir->r_eax, ctx->ir->r_ebx,
 		ctx->ir->r_ecx, ctx->ir->r_edx,
 		ctx->ir->r_esi, ctx->ir->r_edi,

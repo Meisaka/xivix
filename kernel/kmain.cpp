@@ -18,6 +18,7 @@
  */
 #include "ktypes.hpp"
 #include "kio.hpp"
+#include "ktext.hpp"
 #include "dev/drivers.hpp"
 #include "dev/vgatext.hpp"
 #include "dev/fbtext.hpp"
@@ -57,139 +58,16 @@ size_t strlen(char *p) {
 
 namespace xiv {
 
-static TextIO *txtout = nullptr;
-static VirtTerm *txtvc = nullptr;
-static FramebufferText *txtfb = nullptr;
-
-void putc(char c) {
-	if(txtout == nullptr) return;
-	switch(c) {
-	case 10:
-		txtout->nextline();
-		if(txtfb && txtout == txtvc) {
-			txtfb->render_vc(*txtvc);
-		}
-		break;
-	default:
-		txtout->putc(c);
-	}
-}
-
-void printn(const char* s, size_t n) {
-	while(n--) { putc(*(s++)); }
-}
-
-void print(const char* s) {
-	while(*s != 0) { putc(*(s++)); }
-}
-
-void printdec(uint32_t d) {
-	char num[10];
-	unsigned l = 0;
-	if(!d) { putc('0'); return; }
-	while(d) {
-		num[9-l] = (d % 10) + '0';
-		d = d / 10;
-		l++;
-	}
-	printn(num+(10-l), l);
-}
-
-void printhex(uint32_t v) {
-	int i;
-	for(i = 32; i > 4 && ((v >> (i-4)) & 0x0f) == 0; i-=4); // get digit length
-	do {
-		i -= 4;
-		char c = (v >> i) & 0x0f;
-		if(c > 9) c += 7;
-		c += '0';
-		putc(c);
-	} while(i > 0);
-}
-void printhex(uint64_t v) {
-	int i;
-	for(i = 64; i > 4 && ((v >> (i-4)) & 0x0f) == 0; i-=4); // get digit length
-	do {
-		i -= 4;
-		char c = (v >> i) & 0x0f;
-		if(c > 9) c += 7;
-		c += '0';
-		putc(c);
-	} while(i > 0);
-}
-void printhex(uint32_t v, uint32_t bits) {
-	if(bits > 32) bits = 32;
-	int i = bits ^ (bits & 0x3);
-	do {
-		i -= 4;
-		char c = (v >> i) & 0x0f;
-		if(c > 9) c += 7;
-		c += '0';
-		putc(c);
-	} while(i > 0);
-}
-void printhexx(uint64_t v, uint32_t bits) {
-	if(bits > 64) bits = 64;
-	int i = bits ^ (bits & 0x3);
-	do {
-		i -= 4;
-		char c = (v >> i) & 0x0f;
-		if(c > 9) c += 7;
-		c += '0';
-		putc(c);
-	} while(i > 0);
-}
-
-void printf(const char *ftr, ...) {
-	va_list v;
-	unsigned rs = 0;
-	uint32_t num;
-
-	va_start(v, ftr);
-
-	while(*ftr) {
-		switch(rs) {
-		case 0:
-			if(*ftr == '%') {
-				rs = 1;
-			} else {
-				putc(*ftr);
-			}
-			break;
-		case 1:
-			switch(*ftr) {
-			case '%':
-				rs = 0;
-				putc(*ftr);
-				break;
-			case 'd':
-				rs = 0;
-				num = va_arg(v, uint32_t);
-				printdec(num);
-				break;
-			case 'x':
-				rs = 0;
-				num = va_arg(v, uint32_t);
-				printhex(num);
-				break;
-			default:
-				putc('%');
-				putc(*ftr);
-			}
-		}
-		ftr++;
-	}
-	va_end(v);
-}
+extern TextIO *txtout;
+extern VirtTerm *txtvc;
+extern FramebufferText *txtfb;
 
 void show_mem_map() {
 	uint32_t lim = *((uint16_t*)0xc0000500);
 	mmentry *mo = (mmentry*)0xc0000800;
 	for(uint32_t i = 0; i < lim; i++) {
 		printhexx(mo->start, 64);
-		printf(" - ");
-		printhex(mo->size);
-		printf(" - %d (%x)\n", mo->type, mo->exattrib);
+		printf(" - % x - %d (%x)\n", mo->size, mo->type, mo->exattrib);
 		mo++;
 	}
 }
