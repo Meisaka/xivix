@@ -461,16 +461,17 @@ _ive_PF:
 .global _ive_PF
 	pusha			# "new" page fault / debug code
 	mov %esp, %eax
+	mov %eax, %edx
+	add $0x24, %edx
+	push %edx
 	push %eax
-	add $0x24, %eax
-	push %eax
-	call _iv_regdump
-	add $8, %esp
-	movw $0x1C00+'P', %ax
-	movw %ax, 0xC00B8082
-	movw $0x1C00+'F', %ax
-	movw %ax, 0xC00B8084
-	call _ix_ecentry
+	mov %cr2, %edx
+	push %edx
+	mov 0x20(%eax), %edx
+	push %edx
+	mov %esp, %edx
+	mov $0x0e, %eax
+	call _iv_exhload
 	cli	# just stop
 	hlt
 
@@ -517,6 +518,21 @@ _ive_XM:
 	movw %ax, 0xC00B8082
 	popa
 	iret
+
+_iv_exhload:
+	# edx holds struct ptr, eax holds exception#
+	lea ivix_except(,%eax,8), %esi
+	mov (%esi), %ebx
+	test %ebx, %ebx
+	je 1f
+	push %edx
+	push %eax
+	movl 4(%esi), %eax
+	push %eax
+	call *%ebx
+	add $12, %esp
+	1:
+	ret
 
 _iv_irqload:
 	mov %esp, %edx

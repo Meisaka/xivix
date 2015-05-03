@@ -22,7 +22,7 @@
 
 #pragma pack(push, 1)
 
-struct ixintrctx {
+struct ixregfile {
 	uint32_t r_edi;
 	uint32_t r_esi;
 	uint32_t r_ebp;
@@ -31,11 +31,21 @@ struct ixintrctx {
 	uint32_t r_edx;
 	uint32_t r_ecx;
 	uint32_t r_eax;
+};
+struct ixintrhead {
 	uint32_t r_eip;
 	uint32_t r_cs;
 	uint32_t r_eflag;
 };
+struct ixintrctx {
+	ixregfile r;
+	ixintrhead ih;
+};
 struct ixexptctx {
+	uint32_t ec_1;
+	uint32_t ec_2;
+	ixregfile *ir;
+	ixintrhead *ih;
 };
 
 typedef void (*InterruptHandle)(void *, uint32_t, ixintrctx *);

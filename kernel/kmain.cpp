@@ -194,6 +194,8 @@ void show_mem_map() {
 	}
 }
 
+void pfinit();
+
 } // ns xiv
 
 char skeymap[256] = {
@@ -356,6 +358,7 @@ void _kernel_main() {
 
 	printf("  XIVIX kernel hello!\n");
 
+	pfinit();
 	hw::init();
 
 	hw::PS2 *psys = new hw::PS2();
