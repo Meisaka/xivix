@@ -30,6 +30,8 @@ struct VTCell {
 	uint32_t attr;
 };
 
+constexpr uint32_t ATTR_UPDATE = 0x80000000;
+
 class VirtTerm final : public TextIO {
 private:
 	uint16_t col;
@@ -38,6 +40,7 @@ public:
 	VTCell *buffer;
 	uint16_t height;
 	uint16_t width;
+	uint32_t cattr;
 public:
 	VirtTerm(uint16_t w, uint16_t h);
 	~VirtTerm();
@@ -47,6 +50,7 @@ public:
 	void putc(char c) override;
 	void putat(uint16_t x, uint16_t y, char v) override;
 	void nextline() override;
+	void setattr(uint32_t s);
 };
 
 }

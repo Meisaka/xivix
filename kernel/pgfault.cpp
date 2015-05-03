@@ -25,6 +25,7 @@
 namespace xiv {
 
 void pfhandle(void *, uint32_t, ixexptctx *ctx) {
+	printattr(1);
 	printf("Page fault! from %0x\n", ctx->ih->r_eip);
 	printf("CS: %x FLAGS: %0x\n", ctx->ih->r_cs, ctx->ih->r_eflag);
 	printf("code: %x - ", ctx->ec_1);
@@ -40,6 +41,7 @@ void pfhandle(void *, uint32_t, ixexptctx *ctx) {
 		ctx->ir->r_ecx, ctx->ir->r_edx,
 		ctx->ir->r_esi, ctx->ir->r_edi,
 		ctx->ir->r_ebp, ctx->ir->r_esp_hdl);
+	printattr(0);
 }
 
 void pfinit() {

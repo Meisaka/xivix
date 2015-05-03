@@ -108,6 +108,13 @@ static const uint32_t ec1242[] = {
  0x64640028, 0x30187c64
 };
 
+static const uint32_t ufgcolors[16] = {
+	0x00cccccc,
+	0x00ff3300,
+};
+static const uint32_t ubgcolors[16] = {
+	0x00000022,
+};
 static inline uint32_t roll(uint32_t v) {
 	return (v << 1) | (v >> 31);
 }
@@ -129,7 +136,7 @@ void FramebufferText::dispchar32(uint8_t c, uint32_t x, uint32_t y) {
 		lp += pitch;
 	for(unsigned ix = 8; ix ;) {
 		ix--;
-		*cp = (e1 & (1 << ix)) ? 0xffffffff:0x00000044;
+		*cp = (e1 & (1 << ix)) ? fgcolor:bgcolor;
 		cp++;
 	}
 		e1 = rolr8(e1);
@@ -139,7 +146,7 @@ void FramebufferText::dispchar32(uint8_t c, uint32_t x, uint32_t y) {
 		lp += pitch;
 	for(unsigned ix = 8; ix ;) {
 		ix--;
-		*cp = (e2 & (1 << ix)) ? 0xffffffff:0x00000044;
+		*cp = (e2 & (1 << ix)) ? fgcolor:bgcolor;
 		cp++;
 	}
 		e2 = rolr8(e2);
@@ -156,7 +163,13 @@ void FramebufferText::render_vc(xiv::VirtTerm &vc) {
 	for(int y = 0; y < vc.height; y++) {
 		xco = origin.x;
 		for(int x = 0; x < vc.width; x++) {
-			dispchar32(cast<uint8_t>(vc.buffer[x+ro].code), xco, yco);
+			uint32_t att = vc.buffer[x+ro].attr;
+			if(att & xiv::ATTR_UPDATE) {
+				vc.buffer[x+ro].attr ^= xiv::ATTR_UPDATE;
+				fgcolor = ufgcolors[att & 0xf];
+				bgcolor = ubgcolors[(att >> 4) & 0xf];
+				dispchar32(cast<uint8_t>(vc.buffer[x+ro].code), xco, yco);
+			}
 			xco += 8;
 		}
 		ro += vc.width;
@@ -188,6 +201,8 @@ FramebufferText::FramebufferText(void *vm, uint32_t p, uint8_t bits) {
 	row = 0;
 	hlim = 90;
 	vlim = 90;
+	fgcolor = ufgcolors[0];
+	bgcolor = ubgcolors[0];
 }
 FramebufferText::~FramebufferText() {
 }

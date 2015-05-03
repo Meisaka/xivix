@@ -286,7 +286,7 @@ void _kernel_main() {
 	kfree(tei);
 	tei = (uint8_t*)kmalloc(4000000);
 	printf("Tei: %x\n", (uint32_t)tei);
-	tei[3800000] = 'y';
+	//tei[3800000] = 'y';
 
 	bool busy = false;
 	uint32_t nxf = _ivix_int_n + 40;

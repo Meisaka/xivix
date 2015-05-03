@@ -33,6 +33,8 @@ private:
 	uint32_t row;
 	uint32_t hlim;
 	uint32_t vlim;
+	uint32_t fgcolor;
+	uint32_t bgcolor;
 	xiv::vector2<uint32_t> origin;
 public:
 	FramebufferText(void *vm, uint32_t p, uint8_t bits);

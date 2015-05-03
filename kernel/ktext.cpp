@@ -41,7 +41,11 @@ void putc(char c) {
 		txtout->putc(c);
 	}
 }
-
+void printattr(uint32_t x) {
+	if(txtvc) {
+		txtvc->setattr(x);
+	}
+}
 void printn(const char* s, size_t n) {
 	while(n--) { putc(*(s++)); }
 }
