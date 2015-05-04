@@ -39,6 +39,7 @@ private:
 public:
 	FramebufferText(void *vm, uint32_t p, uint8_t bits);
 	~FramebufferText();
+	void resetpointer(void*);
 
 	void setoffset(uint32_t x, uint32_t y); // top/left of "window"
 	void dispchar32(uint8_t c, uint32_t x, uint32_t y);

@@ -434,25 +434,29 @@ namespace mem {
 
 	void init_page_chain(void * first, int n) {
 		if(n < 1) return;
+		ChainPtr *nextpage;
 		if(!first) xiv::print("VMM:ERR: Bad page allocation.\n");
 		if(!blockfreeptr) {
 			blockfreeptr = (ChainPtr*)first;
 			blockfreeptr->next = nullptr;
-		}
-		ChainPtr *nextpage = blockfreeptr;
-		while(nextpage->next) {
+			nextpage = blockfreeptr;
+			xiv::printf("VMM:First block at %0x\n", first);
+		} else {
+			nextpage = blockfreeptr;
+			while(nextpage->next) {
+				nextpage = nextpage->next;
+				xiv::printf("VMM:mNext: %0x\n", (uint32_t)nextpage);
+			}
+			nextpage->next = (ChainPtr*)first;
 			nextpage = nextpage->next;
 		}
-		nextpage->next = (ChainPtr*)first;
-		nextpage = nextpage->next;
-		while(n--) {
-			if(n) {
-				nextpage->next = nextpage+1;
-			} else {
-				nextpage->next = nullptr;
-			}
-		}
 		tablefreeblocks += n;
+		while(n--) {
+			nextpage->next = nextpage+1;
+			nextpage++;
+			xiv::printf("VMM:sNext: %0x\n", (uint32_t)nextpage);
+		}
+		nextpage->next = nullptr;
 	}
 	uint64_t translate_page(uintptr_t t) {
 		uint32_t ofs_dp = (t >> 30) & 0x3;
@@ -481,6 +485,9 @@ namespace mem {
 		} else {
 			uint64_t tablebase = dirptr->pde[ofs_d];
 			// TODO if(tablebase) not present or present large page
+			if(!(tablebase & 1)) {
+				xiv::print("MEM: tablebase not present\n");
+			}
 			if(tablebase & MAP_LARGE) {
 				// ignore large mapping overwrite
 			} else {
@@ -493,11 +500,18 @@ namespace mem {
 					xiv::printf("VMM:/%x/%x/%x/", ofs_dp, ofs_d, ofs_t);
 					xiv::print("add pagetable/");
 					if(tablefreeblocks < 2) {
-						init_page_chain(alloc_pages(16, 0), 16);
+						xiv::print("init_chain/");
+						init_page_chain(alloc_pages(40, 0), 40);
 					}
 					pti->ptp[ofs_d] = (PageTable*)blockfreeptr;
-					blockfreeptr = blockfreeptr->next;
-					tablefreeblocks--;
+					xiv::print("get_next/");
+					if(blockfreeptr->next == nullptr) {
+						xiv::print("end of blocks!/");
+					} else {
+						blockfreeptr = blockfreeptr->next;
+						tablefreeblocks--;
+					}
+					xiv::print("zero table/");
 					uint64_t *cpte = pti->ptp[ofs_d]->pte;
 					for(int x = 0; x < 512; x++) {
 						cpte[x] = 0;
@@ -550,13 +564,20 @@ namespace mem {
 		return 0;
 	}
 	int req_allocrange(void (*allocadd)(void *, uint64_t, uint32_t), void * t, uint32_t ml) {
-		xiv::print("MEM: Request new allocation blocks\n");
 		uint32_t mmb = (ml / SM_PAGE_SIZE) + 1;
 		if(mmb < 16) mmb = 16;
-		uint64_t ph = blkalloc.allocate(mmb);
-		if(ph == 0) return -1;
 		uint64_t bu = vpalloc.allocate(mmb);
-		if(bu == 0) return -2;
+		if(bu == 0) {
+			xiv::print("MEM: Virtual allocation failed\n");
+			return -2;
+		}
+		uint64_t ph = blkalloc.allocate(mmb);
+		if(ph == 0) {
+			xiv::print("MEM: Physical allocation failed\n");
+			return -1;
+		}
+		xiv::printf("MEM: Block allocation %0lx > %0lx\n", ph, bu);
+		request(ml, (void*)bu, ph, RQ_RW | RQ_HINT);
 		allocadd(t, bu, SM_PAGE_SIZE * mmb);
 		return 0;
 	}

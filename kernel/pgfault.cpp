@@ -31,7 +31,7 @@ void pfhandle(void *, uint32_t, ixexptctx *ctx) {
 	printf("code: %x - ", ctx->ec_1);
 	print(ctx->ec_1 & 1 ? "PROTECT " : "NONPRESENT ");
 	print(ctx->ec_1 & 4 ? "USER " : "KERNEL ");
-	print(ctx->ec_1 & 2 ? "WRITE" : " READ");
+	print(ctx->ec_1 & 2 ? "WRITE" : "READ");
 	if(ctx->ec_1 & 8) print(" RESRVD-SET");
 	if(ctx->ec_1 & 16) print(" INS-FETCH");
 	printf(" At Address %0x\n", ctx->ec_2);

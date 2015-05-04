@@ -210,8 +210,9 @@ void _kernel_main() {
 		}
 	}
 	uint32_t *vid = reinterpret_cast<uint32_t*>(0xd0000000);
+	uint32_t vidl = vidinfo->x_res * vidinfo->y_res;
 	printf("Display clear\n");
-	for(uint32_t y = 0; y < 102400; y++) {
+	for(uint32_t y = 0; y < vidl; y++) {
 		vid[y] = 0x0;
 	}
 	FramebufferText *fbt = new FramebufferText(vid, vidinfo->x_res * (vidinfo->bits_per_pixel / 8), vidinfo->bits_per_pixel);
@@ -284,10 +285,7 @@ void _kernel_main() {
 	}
 	printf("Tei: %x\n", (uint32_t)tei);
 	kfree(tei);
-	tei = (uint8_t*)kmalloc(4000000);
-	printf("Tei: %x\n", (uint32_t)tei);
-	//tei[3800000] = 'y';
-
+	
 	bool busy = false;
 	uint32_t nxf = _ivix_int_n + 40;
 	bool flk = false;
@@ -309,7 +307,9 @@ void _kernel_main() {
 			uint8_t ch = mapchar(k, kb1->mods);
 			if(ch) {
 				putc(ch);
-				if(ch != 10) fbt->render_vc(*svt);
+				if(ch != 10) {
+					fbt->render_vc(*svt);
+				}
 				nxf = _ivix_int_n + 10;
 				flk = true;
 				fbt->putat(svt->getcol(), svt->getrow(), '_');

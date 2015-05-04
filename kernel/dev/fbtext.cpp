@@ -152,6 +152,9 @@ void FramebufferText::dispchar32(uint8_t c, uint32_t x, uint32_t y) {
 		e2 = rolr8(e2);
 	}
 }
+void FramebufferText::resetpointer(void *vm) {
+	fbb = reinterpret_cast<uint8_t*>(vm);
+}
 void FramebufferText::setoffset(uint32_t x, uint32_t y) {
 	origin.x = x;
 	origin.y = y;

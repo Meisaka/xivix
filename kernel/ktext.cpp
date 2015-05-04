@@ -99,6 +99,17 @@ void printhex(uint64_t v) {
 		putc(c);
 	} while(i > 0);
 }
+void printhexs(uint64_t v) {
+	int i;
+	for(i = 64; i > 4 && ((v >> (i-4)) & 0x0f) == 0; i-=4) putc(' '); // get digit length
+	do {
+		i -= 4;
+		char c = (v >> i) & 0x0f;
+		if(c > 9) c += 7;
+		c += '0';
+		putc(c);
+	} while(i > 0);
+}
 void printhex(uint32_t v, uint32_t bits) {
 	if(bits > 32) bits = 32;
 	int i = bits ^ (bits & 0x3);
@@ -127,6 +138,7 @@ void printf(const char *ftr, ...) {
 	unsigned rs = 0;
 	int pad = 0;
 	uint32_t num;
+	uint64_t numx;
 
 	va_start(v, ftr);
 
@@ -151,6 +163,9 @@ void printf(const char *ftr, ...) {
 				pad = 2;
 				rs = 1;
 				break;
+			case 'l':
+				rs = 2;
+				break;
 			case '%':
 				putc(*ftr);
 				break;
@@ -168,6 +183,33 @@ void printf(const char *ftr, ...) {
 				putc('%');
 				putc(*ftr);
 			}
+			break;
+		case 2:
+			rs = 0;
+			switch(*ftr) {
+			case '0':
+				pad = 1;
+				rs = 2;
+				break;
+			case ' ':
+				pad = 2;
+				rs = 2;
+				break;
+			case 'd':
+				numx = va_arg(v, uint64_t);
+				printdec(numx);
+				break;
+			case 'x':
+				numx = va_arg(v, uint64_t);
+				if(pad == 2) printhexs(numx);
+				else if(pad == 1) printhexx(numx, 64);
+				else printhex(numx);
+				break;
+			default:
+				putc('%');
+				putc(*ftr);
+			}
+			break;
 		}
 		ftr++;
 	}
