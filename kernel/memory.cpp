@@ -11,10 +11,6 @@
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License along
- * with this program; if not, write to the Free Software Foundation, Inc.,
- *     51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
 #include "memory.hpp"
@@ -63,11 +59,13 @@ namespace mem {
 		MX_ALLOC,
 		MX_IO,
 		MX_LINK,
+		MX_LAST // this must be last
 	};
 	const char * const EXTENTCLASS[] = {
 		"UNSET",
 		"-----",
 		"FREE ",
+		"CLEAR",
 		"SYSTM",
 		"CTRL ",
 		"ALLOC",
@@ -144,11 +142,25 @@ namespace mem {
 			p->next = cba;
 			p->length = sz;
 		}
+		T *next_empty_extent() {
+			T *p = plast;
+			while(p->flags < MX_LAST && p->flags != MX_UNSET && p->flags != MX_EMPTY) {
+				if(p->flags == MX_LINK) {
+					p = p->next;
+				} else {
+					p++;
+				}
+			}
+			return p;
+		}
 		void add_extent(uint64_t b, uint32_t l, uint32_t f) {
 			if(l == 0 || f == 0) return;
 			if(f == MX_FREE) {
 				if(pfree->flags == MX_FREE) {
 					// if we are adding memory on the end, cull it
+					xiv::printf("VMM: Adding Free ");
+					xiv::printhexx(pfree->base + (pfree->length * UNIT), 64);
+					xiv::putc(10);
 					if(pfree->base + pfree->length * UNIT == b) {
 						pfree->length += l;
 						return;
@@ -161,7 +173,7 @@ namespace mem {
 			plast->base = b;
 			plast->length = l;
 			plast->flags = f;
-			plast++;
+			plast = next_empty_extent();
 		}
 		T * find_extent(uint64_t b) {
 			T *pt = pbase;
@@ -177,13 +189,13 @@ namespace mem {
 			}
 			return nullptr;
 		}
-		void find_free_extent() {
+		/* find free extent of at least size l, or last if l == 0 */
+		void find_free_extent(uint32_t l) {
 			T *pt = pbase;
-			uint32_t lc = 0;
 			while(pt->flags != MX_UNSET) {
-				if(pt->flags == MX_FREE && pt->length >= lc) {
+				if(pt->flags == MX_FREE && pt->length >= l) {
 					pfree = pt;
-					lc = pfree->length;
+					if(l) return;
 				}
 				if(pt->flags == MX_LINK) {
 					pt = pt->next;
@@ -229,7 +241,7 @@ namespace mem {
 			} else {
 				add_extent(b, l, f);
 			}
-			if(pfree->flags != MX_FREE) find_free_extent();
+			if(pfree->flags != MX_FREE) find_free_extent(0);
 		}
 		int free(uint64_t b) {
 			T *p = find_extent(b);
@@ -250,6 +262,11 @@ namespace mem {
 			}
 			p->flags = MX_FREE;
 			if(pfree->base > p->base) {
+				if(p->base + (p->length*UNIT) == pfree->base && pfree->flags == MX_FREE) {
+					pfree->flags = MX_EMPTY;
+					plast = pfree;
+					p->length += pfree->length;
+				}
 				pfree = p;
 			}
 			return 0;
@@ -259,7 +276,7 @@ namespace mem {
 		}
 		uint64_t allocate(uint32_t l, uint32_t f) {
 			if(pfree->flags != MX_FREE) {
-				find_free_extent();
+				find_free_extent(l);
 				if(pfree->flags != MX_FREE) {
 					xiv::print("MMA: No FREE blocks\n");
 					if(req_allocrange(add_memory_callback, this, l)) {
@@ -273,10 +290,18 @@ namespace mem {
 				mark_extent(mm, l, f);
 				return mm;
 			} else {
-				if(req_allocrange(add_memory_callback, this, l) == 0) {
+				find_free_extent(l);
+				if(pfree->length >= l && pfree->flags == MX_FREE) {
 					uint64_t mm = pfree->base;
 					mark_extent(mm, l, f);
 					return mm;
+				} else {
+					find_free_extent(0); // find last free
+					if(req_allocrange(add_memory_callback, this, l) == 0) {
+						uint64_t mm = pfree->base;
+						mark_extent(mm, l, f);
+						return mm;
+					}
 				}
 			}
 			xiv::printf("MMA: Length Exceeded %d/%d\n", l, pfree->length);
@@ -306,6 +331,9 @@ namespace mem {
 				if(pt == pbase) {
 					xiv::print("<BASE");
 				}
+				if(pt == plast) {
+					xiv::print("<LAST");
+				}
 				xiv::putc(10);
 				lastempty = (pt->flags == MX_EMPTY);
 				}
@@ -325,7 +353,7 @@ namespace mem {
 
 	constexpr int const SM_PAGE_SIZE = 0x1000;
 
-	ExtentAllocator<SM_PAGE_SIZE, 1> memalloc;
+	ExtentAllocator<SM_PAGE_SIZE, 1, true> memalloc;
 	ExtentAllocator<SM_PAGE_SIZE, SM_PAGE_SIZE> blkalloc;
 	ExtentAllocator<SM_PAGE_SIZE, SM_PAGE_SIZE> vpalloc;
 
@@ -490,20 +518,22 @@ namespace mem {
 			}
 			if(tablebase & MAP_LARGE) {
 				// ignore large mapping overwrite
+				xiv::print("VMM:WARN: Large map exist.\n");
 			} else {
 				PageTableIndex *pti = pdpt->ptip[ofs_dp];
 				if(!pti) {
 					xiv::print("VMM:ERR: Table Index not exist.");
 					return;
 				}
-				if(!pti->ptp[ofs_d]) {
+				PageTable *ptptr = pti->ptp[ofs_d];
+				if(!ptptr) {
 					xiv::printf("VMM:/%x/%x/%x/", ofs_dp, ofs_d, ofs_t);
 					xiv::print("add pagetable/");
 					if(tablefreeblocks < 2) {
 						xiv::print("init_chain/");
 						init_page_chain(alloc_pages(40, 0), 40);
 					}
-					pti->ptp[ofs_d] = (PageTable*)blockfreeptr;
+					ptptr = pti->ptp[ofs_d] = (PageTable*)blockfreeptr;
 					xiv::print("get_next/");
 					if(blockfreeptr->next == nullptr) {
 						xiv::print("end of blocks!/");
@@ -516,12 +546,16 @@ namespace mem {
 					for(int x = 0; x < 512; x++) {
 						cpte[x] = 0;
 					}
+					_ix_loadcr3((uint32_t)&_ivix_phy_pdpt); // reset page tables
+				} else {
+					xiv::print("VMM:ERR: Page Table exist. ");
+					xiv::printhexx(ptptr->pte[ofs_t], 64); xiv::putc('>');
+					xiv::printhexx(phy.m, 64); xiv::putc(10);
 				}
 				if((tablebase & 1) == 0) {
 					xiv::print("map pagetable\n");
 					dirptr->pde[ofs_d] = translate_page((uintptr_t)pti->ptp[ofs_d]) | 1 | MAP_RW;
 				}
-				PageTable *ptptr = pti->ptp[ofs_d];
 				ptptr->pte[ofs_t] = phy.m | 1 | (f & 0x1f);
 			}
 		}
@@ -577,14 +611,21 @@ namespace mem {
 			return -1;
 		}
 		xiv::printf("MEM: Block allocation %0lx > %0lx\n", ph, bu);
-		request(ml, (void*)bu, ph, RQ_RW | RQ_HINT);
+		request(mmb * SM_PAGE_SIZE, (void*)bu, ph, RQ_RW | RQ_HINT);
 		allocadd(t, bu, SM_PAGE_SIZE * mmb);
 		return 0;
 	}
-	void debug() {
-		blkalloc.debug_table();
-		//memalloc.debug_table();
-		vpalloc.debug_table();
+	void debug(int t) {
+		switch(t) {
+		case 1:
+			blkalloc.debug_table();
+			break;
+		case 2:
+			vpalloc.debug_table();
+			break;
+		default:
+			memalloc.debug_table();
+		}
 	}
 	void ref_destroy(size_t r) {
 		if(!r) return;

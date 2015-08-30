@@ -16,7 +16,7 @@ struct Port {
 	virtual uint32_t port_query() = 0;
 	virtual void port_send(uint8_t c) = 0;
 };
-struct NetworkMAC {
+struct NetworkMAC : public Hardware {
 	virtual void transmit(void *, size_t) = 0;
 	virtual void addreceive(void *, size_t) = 0;
 	virtual void getmediaaddr(uint8_t *) const = 0;

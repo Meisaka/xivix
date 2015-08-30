@@ -11,10 +11,6 @@
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License along
- * with this program; if not, write to the Free Software Foundation, Inc.,
- *     51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 #include "e1000.hpp"
 #include "ktext.hpp"
@@ -218,7 +214,7 @@ uint32_t e1000::handle_int() {
 }
 
 e1000::e1000(pci::PCIBlock &pcib) {
-	xiv::print("e1000: init...\n");
+	xiv::print("e1000: add device\n");
 	xiv::printf("e1000: base: %x / %x\n", pcib.bar[0], pcib.barsz[0]);
 	xiv::printf("e1000: intr: %x / %x\n", pcib.info.int_line, pcib.info.int_pin);
 	lastint = 0;
@@ -231,10 +227,15 @@ e1000::e1000(pci::PCIBlock &pcib) {
 	mem::request(pcib.barsz[0], vmbase, piobase, mem::RQ_HINT | mem::RQ_RW);
 	descbase = mem::alloc_pages(1, 0);
 	DESC_PAGE *descpage = (DESC_PAGE*)descbase;
-	uint64_t rdbuf = mem::translate_page((uint32_t)descpage->recv);
-	uint64_t txbuf = mem::translate_page((uint32_t)descpage->trmt);
+	rdbuf = mem::translate_page((uint32_t)descpage->recv);
+	txbuf = mem::translate_page((uint32_t)descpage->trmt);
 	ivix_interrupt[pcib.info.int_line] = { .entry = e1000_intcall, .rlocal = this };
+}
 
+e1000::~e1000() {
+}
+bool e1000::init() {
+	xiv::print("e1000: init...\n");
 	// Device Control
 	HWR_CTRL r_ctrl = { .value = 0 };
 	HWR_IMS ims = { .value = 0 };
@@ -306,11 +307,6 @@ e1000::e1000(pci::PCIBlock &pcib) {
 	ims.mdac = 1;
 	ims.txd_low = 1;
 	viobase[0xd0>>2] = ims.value;
-}
-
-e1000::~e1000() {
-}
-bool e1000::init() {
 	return true;
 }
 void e1000::remove() {

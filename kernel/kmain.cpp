@@ -251,7 +251,8 @@ void _kernel_main() {
 	fbt->render_vc(*svt);
 
 	uint8_t *tei = (uint8_t*)kmalloc(2048);
-	{
+	if(hw::ethdev) {
+		hw::ethdev->init();
 		int q = 0;
 		for(; q < 6; q++) tei[q] = 0xff;
 		hw::ethdev->getmediaaddr(&tei[q]);
@@ -283,8 +284,14 @@ void _kernel_main() {
 		for(int x = 0; hai[x]; x++, q++) tei[q] = (uint8_t)hai[x];
 		if(hw::ethdev) hw::ethdev->transmit(tei, 14+70);
 	}
+	mem::debug(0);
 	printf("Tei: %x\n", (uint32_t)tei);
 	kfree(tei);
+	mem::debug(0);
+	int cmdlen = 4096;
+	int cmdx = 0, cmdl = 0;
+	char *cmd = (char*)kmalloc(cmdlen);
+	mem::debug(0);
 	
 	bool busy = false;
 	uint32_t nxf = _ivix_int_n + 40;
@@ -309,6 +316,47 @@ void _kernel_main() {
 				putc(ch);
 				if(ch != 10) {
 					fbt->render_vc(*svt);
+					if(cmdx < cmdlen) cmd[cmdx++] = ch;
+				} else {
+					if(cmdx == 0) {
+						cmdx = cmdl;
+					}
+					if(cmdx == 1) {
+						switch(cmd[0]) {
+						case 'd':
+							mem::debug(0);
+							break;
+						case 'a':
+							{
+							char * leak=(char*)kmalloc(0x4000);
+							mem::debug(0);
+							leak[0] = 7;
+							}
+							break;
+						case 's':
+							{
+							char * leak=(char*)kmalloc(0x800);
+							mem::debug(0);
+							leak[0] = 7;
+							}
+							break;
+						case 'l':
+							{
+							char * leak=(char*)kmalloc(0x10000);
+							mem::debug(0);
+							leak[0] = 7;
+							}
+							break;
+						case 'p':
+							mem::debug(1);
+							break;
+						case 'v':
+							mem::debug(2);
+							break;
+						}
+					}
+					cmdl = cmdx;
+					cmdx = 0;
 				}
 				nxf = _ivix_int_n + 10;
 				flk = true;

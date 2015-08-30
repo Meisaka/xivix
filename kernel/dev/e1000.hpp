@@ -11,10 +11,6 @@
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License along
- * with this program; if not, write to the Free Software Foundation, Inc.,
- *     51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 #ifndef DEV_E1000_HAI
 #define DEV_E1000_HAI
@@ -24,7 +20,7 @@
 
 namespace hw {
 
-class e1000 final : public Hardware, public NetworkMAC {
+class e1000 final : public NetworkMAC {
 private:
 	volatile uint32_t *viobase;
 	uint8_t macaddr[6];
@@ -36,6 +32,8 @@ private:
 	uint32_t rxheadp;
 	uint32_t txheadp;
 	uint32_t lastint;
+	uint64_t rdbuf;
+	uint64_t txbuf;
 private:
 	uint16_t readeeprom(uint16_t);
 public:

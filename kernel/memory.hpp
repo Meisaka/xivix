@@ -11,10 +11,6 @@
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License along
- * with this program; if not, write to the Free Software Foundation, Inc.,
- *     51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
 #ifndef MEMORY_HAI
@@ -131,7 +127,7 @@ namespace mem {
 	};
 
 	void initialize();
-	void debug();
+	void debug(int);
 	uint64_t translate_page(uintptr_t t);
 	void map_page(phyaddr_t, uintptr_t, uint32_t);
 	void * alloc_pages(size_t, uint32_t);
