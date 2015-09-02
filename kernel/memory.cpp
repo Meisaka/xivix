@@ -59,6 +59,7 @@ namespace mem {
 		MX_ALLOC,
 		MX_IO,
 		MX_LINK,
+		MX_RESV,
 		MX_LAST // this must be last
 	};
 	const char * const EXTENTCLASS[] = {
@@ -70,7 +71,8 @@ namespace mem {
 		"CTRL ",
 		"ALLOC",
 		"I/O  ",
-		"NLINK"
+		"NLINK",
+		"RESRV"
 	};
 	
 	constexpr static int CONTROL_UNITS = 2;
@@ -78,46 +80,84 @@ namespace mem {
 	int req_control(void (*)(void *, void *, uint32_t), void *);
 	int req_allocrange(void (*)(void *, uint64_t, uint32_t), void *, uint32_t);
 
-	template<int ADDRSIZE, int UNIT, bool CULL = false, class T = MemExtent>
+	template<int ADDRSIZE, int UNIT, bool CULL = false, int RESERVE = 0, class T = MemExtent>
 	class ExtentAllocator {
 	public:
+		const char *vmt;
 		T *pbase;
 		T *pfree;
 		T *plast;
 		T *pcblock;
+		bool resv_alloc;
 		constexpr static const uint32_t max_ext = ADDRSIZE / sizeof(T);
 	public:
-		ExtentAllocator() {}
+		ExtentAllocator() { vmt = nullptr; }
+		ExtentAllocator(const char *n) { vmt = n; }
 		ExtentAllocator(const ExtentAllocator&) = delete;
 		ExtentAllocator(ExtentAllocator&&) = delete;
 		ExtentAllocator& operator=(const ExtentAllocator&) = delete;
 		ExtentAllocator& operator=(ExtentAllocator&&) = delete;
 
 		void init(void * ldaddr, uint32_t adl) {
+			xiv::printf("VMM: Initializing at %x", (uintptr_t)ldaddr);
 			pbase = (T*)ldaddr;
 			pbase->flags = MX_UNSET;
 			pfree = pcblock = plast = pbase;
 			T *p = plast;
 			uint32_t c = (adl * ADDRSIZE) - sizeof(T);
+			uint32_t ce = c - (RESERVE * sizeof(T));
 			uint32_t sz = 0;
+			while(sz < ce) {
+				p->flags = MX_EMPTY;
+				p++;
+				sz += sizeof(T);
+			}
+			if(sz < c) {
+				p->flags = MX_RESV;
+				p++;
+				sz += sizeof(T);
+			}
 			while(sz < c) {
 				p->flags = MX_EMPTY;
 				p++;
 				sz += sizeof(T);
 			}
 			p->flags = MX_UNSET;
+			resv_alloc = false;
 			add_extent(0, adl, MX_CONTROL);
 		}
-		static void add_control_callback(void * t, void * cba, uint32_t cbl) {
-			((ExtentAllocator<ADDRSIZE,UNIT,CULL,T>*)t)->add_control(cba, cbl);
+		static void add_control_callback(void * t, uint64_t cba, uint32_t cbl) {
+			((ExtentAllocator<ADDRSIZE,UNIT,CULL,RESERVE,T>*)t)->add_control(cba, cbl / ADDRSIZE);
 		}
 		static void add_memory_callback(void * t, uint64_t cba, uint32_t cbl) {
-			((ExtentAllocator<ADDRSIZE,UNIT,CULL,T>*)t)->add_extent(cba, cbl, MX_FREE);
+			((ExtentAllocator<ADDRSIZE,UNIT,CULL,RESERVE,T>*)t)->add_extent(cba, cbl, MX_FREE);
 		}
-		void add_control(void * cba, uint32_t cbl) {
+		int aquire(uint32_t l) {
+			if(l < 16*(ADDRSIZE/UNIT)) l = 16*(ADDRSIZE/UNIT);
+			return req_allocrange(add_memory_callback, this, l);
+		}
+		int aquire_control() {
+			return req_allocrange(add_control_callback, this, ADDRSIZE * CONTROL_UNITS);
+		}
+		void add_control(uint64_t cba, uint32_t cbl) {
 			T *p = (T*)cba;
+			T *initp = p;
 			uint32_t c = (cbl * ADDRSIZE) - sizeof(T);
+			uint32_t ce = c - (RESERVE * sizeof(T));
 			uint32_t sz = 0;
+
+			xiv::print("VMM:"); if(vmt) xiv::print(vmt);
+			xiv::printf(" Adding control block (%x) > %x\n", cbl, initp);
+			while(sz < ce) {
+				p->flags = MX_EMPTY;
+				p++;
+				sz += sizeof(T);
+			}
+			if(sz < c) {
+				p->flags = MX_RESV;
+				p++;
+				sz += sizeof(T);
+			}
 			while(sz < c) {
 				p->flags = MX_EMPTY;
 				p++;
@@ -132,23 +172,50 @@ namespace mem {
 
 			p = pcblock;
 			while(p->flags != MX_UNSET) {
+				if(p->flags >= MX_LAST) {
+					xiv::print("VMM: Invalid table\n");
+					return;
+				}
+				if(p->flags == MX_RESV) {
+					p->flags = MX_EMPTY;
+				}
 				if(p->flags == MX_LINK) {
 					p = p->next;
 				} else {
 					p++;
 				}
 			}
+			xiv::print("VMM:"); if(vmt) xiv::print(vmt);
+			xiv::printf(" Adding link (%d) %x > %x\n", sz, p, initp);
 			p->flags = MX_LINK;
-			p->next = cba;
+			p->next = initp;
 			p->length = sz;
 		}
 		T *next_empty_extent() {
 			T *p = plast;
-			while(p->flags < MX_LAST && p->flags != MX_UNSET && p->flags != MX_EMPTY) {
+			uint32_t lc = 0;
+			uint32_t lls = 0;
+			p = pcblock;
+			lls = ((p->length * ADDRSIZE) / sizeof(T)) - 1;
+			while(p->flags < MX_LAST
+					&& p->flags != MX_UNSET
+					&& p->flags != MX_EMPTY
+					&& p->flags != MX_RESV) {
 				if(p->flags == MX_LINK) {
+					xiv::print("VMM:"); if(vmt) xiv::print(vmt);
+					if(lc < lls) {
+						xiv::printf(" invalid link at (%d/%d) %x\n", lc, lls, p);
+						return p;
+					} else {
+					xiv::printf(" following link at (%d) %x > ", lc, p);
+					xiv::printhexx(p->base, 64); xiv::putc(10);
+					lls = (p->length / sizeof(T)) - 1;
 					p = p->next;
+					lc = 0;
+					}
 				} else {
 					p++;
+					lc++;
 				}
 			}
 			return p;
@@ -158,10 +225,10 @@ namespace mem {
 			if(f == MX_FREE) {
 				if(pfree->flags == MX_FREE) {
 					// if we are adding memory on the end, cull it
-					xiv::printf("VMM: Adding Free ");
-					xiv::printhexx(pfree->base + (pfree->length * UNIT), 64);
-					xiv::putc(10);
 					if(pfree->base + pfree->length * UNIT == b) {
+						xiv::printf("VMM: Adding Free ");
+						xiv::printhexx(pfree->base + (pfree->length * UNIT), 64);
+						xiv::printf("+%d\n", l*UNIT);
 						pfree->length += l;
 						return;
 					}
@@ -169,6 +236,9 @@ namespace mem {
 				pfree = plast;
 			} else if(f == MX_CONTROL) {
 				pcblock = plast;
+			}
+			if(plast->flags == MX_UNSET) {
+				xiv::printf("VMM: FAILED to add at end of block.\n");
 			}
 			plast->base = b;
 			plast->length = l;
@@ -207,7 +277,9 @@ namespace mem {
 		T * intersect_extent(uint64_t b, uint32_t l) {
 			T *pt = pbase;
 			while(pt->flags != MX_UNSET) {
-				if(pt->flags != MX_CONTROL) {
+				if(pt->flags != MX_CONTROL
+						&& pt->flags != MX_LINK
+						&& pt->flags != MX_EMPTY) {
 					if(b >= pt->base && (b + l * UNIT) <= (pt->base + pt->length * UNIT)) {
 						return pt;
 					}
@@ -275,37 +347,56 @@ namespace mem {
 			return allocate(l, MX_ALLOC);
 		}
 		uint64_t allocate(uint32_t l, uint32_t f) {
+			uint64_t mm;
+			if(!resv_alloc && plast->flags == MX_RESV) {
+				resv_alloc = true;
+				xiv::print("VMM: Entering Reserve\n");
+				if(aquire_control()) {
+					xiv::printf("VMM: FAILED to add at reserved block.\n");
+				}
+				plast = next_empty_extent();
+				xiv::print("VMM: Exiting Reserve\n");
+				resv_alloc = false;
+			} else if(plast->flags == MX_UNSET) {
+				xiv::print("VMM: At list end\n");
+				if(aquire_control()) {
+					xiv::printf("VMM: FAILED to add at reserved block.\n");
+				}
+			}
 			if(pfree->flags != MX_FREE) {
 				find_free_extent(l);
 				if(pfree->flags != MX_FREE) {
 					xiv::print("MMA: No FREE blocks\n");
-					if(req_allocrange(add_memory_callback, this, l)) {
+					if(aquire(l)) {
 						xiv::print("MMA: Allocation fail\n");
 						return 0;
 					}
 				}
 			}
 			if(pfree->length >= l) {
-				uint64_t mm = pfree->base;
+				mm = pfree->base;
 				mark_extent(mm, l, f);
-				return mm;
+				goto exitmm;
 			} else {
 				find_free_extent(l);
 				if(pfree->length >= l && pfree->flags == MX_FREE) {
-					uint64_t mm = pfree->base;
+					mm = pfree->base;
 					mark_extent(mm, l, f);
-					return mm;
+					goto exitmm;
 				} else {
 					find_free_extent(0); // find last free
-					if(req_allocrange(add_memory_callback, this, l) == 0) {
-						uint64_t mm = pfree->base;
+					if(!CULL && aquire(l) == 0) {
+						mm = pfree->base;
 						mark_extent(mm, l, f);
-						return mm;
+						if(!CULL) find_free_extent(1);
+						goto exitmm;
 					}
 				}
 			}
 			xiv::printf("MMA: Length Exceeded %d/%d\n", l, pfree->length);
 			return 0;
+exitmm:
+			return mm;
 		}
 		void debug_table() {
 			T *pt = pbase;
@@ -317,9 +408,13 @@ namespace mem {
 					cbls = max_ext * pt->length;
 				}
 				if(pt->flags != MX_EMPTY || !lastempty) {
-				xiv::print("ALTE: ");
+				xiv::printf("ALTE: %d ", addrc);
 				xiv::printhexx(pt->base, 64);
 				xiv::print(" f:");
+				if(pt->flags >= MX_LAST) {
+					xiv::print("INVALID\n");
+					return;
+				}
 				xiv::print(EXTENTCLASS[pt->flags]);
 				xiv::printf(" l: %x ", pt->length);
 				if(pt == pfree) {
@@ -338,9 +433,15 @@ namespace mem {
 				lastempty = (pt->flags == MX_EMPTY);
 				}
 				if(pt->flags == MX_LINK) {
-					xiv::printf("Block: %d/%d\n", addrc, cbls);
-					addrc = 0;
-					pt = pt->next;
+					if(addrc < cbls - 1) {
+						xiv::printf("Invalid link! ");
+						addrc++;
+						pt++;
+					} else {
+						xiv::printf("Block: %d/%d\n", addrc, cbls);
+						addrc = 0;
+						pt = pt->next;
+					}
 				} else {
 					addrc++;
 					if(pt->flags == MX_UNSET) break;
@@ -349,13 +450,44 @@ namespace mem {
 			}
 			xiv::printf("Block: %d/%d\n", addrc, cbls);
 		}
+		void debug_counts() {
+			T *pt = pbase;
+			uint32_t addrc = 0;
+			uint32_t cbls = 0;
+			uint32_t n_free = 0;
+			uint32_t n_alloc = 0;
+			uint32_t n_ctl = 0;
+			uint32_t n_empty = 0;
+			while(true) {
+				if(pt->flags == MX_CONTROL) {
+					cbls = max_ext * pt->length;
+					n_ctl++;
+				}
+				switch(pt->flags) {
+				case MX_FREE: n_free++; break;
+				case MX_ALLOC: n_alloc++; break;
+				case MX_EMPTY: n_empty++; break;
+				}
+				if(pt->flags == MX_LINK) {
+					addrc = 0;
+					pt = pt->next;
+				} else {
+					addrc++;
+					if(pt->flags == MX_UNSET) break;
+					pt++;
+				}
+			}
+			xiv::printf("Free: %d, Alloc: %d, Ctrl: %d, Empty: %d\n",
+					n_free, n_alloc, n_ctl, n_empty);
+			xiv::printf("Block: %d/%d\n", addrc, cbls);
+		}
 	};
 
 	constexpr int const SM_PAGE_SIZE = 0x1000;
 
-	ExtentAllocator<SM_PAGE_SIZE, 1, true> memalloc;
-	ExtentAllocator<SM_PAGE_SIZE, SM_PAGE_SIZE> blkalloc;
-	ExtentAllocator<SM_PAGE_SIZE, SM_PAGE_SIZE> vpalloc;
+	ExtentAllocator<SM_PAGE_SIZE, 1, false, 4> memalloc("sysmem");
+	ExtentAllocator<SM_PAGE_SIZE, SM_PAGE_SIZE, true, 4> blkalloc("sysphy");
+	ExtentAllocator<SM_PAGE_SIZE, SM_PAGE_SIZE, true, 8> vpalloc("sysvmm");
 
 	extern "C" {
 	extern uint8_t _ivix_phy_pdpt;
@@ -367,6 +499,7 @@ namespace mem {
 
 	PageDirPtr *pdpt;
 	static uint32_t tablefreeblocks;
+	static uint32_t tablefreelock;
 	union ChainPtr {
 		ChainPtr *next;
 		uint8_t block[SM_PAGE_SIZE];
@@ -405,6 +538,7 @@ namespace mem {
 		xiv::printf("PDP: %x\n", (size_t)pdpt);
 		xiv::printf("Heap start: %x\n", (size_t)&_kernel_end);
 		tablefreeblocks = 0;
+		tablefreelock = 0;
 		blockfreeptr = nullptr;
 		pdpt->pdp[0] = (PageDir*)blockptr; blockptr += 0x1000;
 		pdpt->pdp[1] = (PageDir*)blockptr; blockptr += 0x1000;
@@ -426,6 +560,7 @@ namespace mem {
 		blockptr += 0x2000;
 		vpalloc.init(blockptr, CONTROL_UNITS);
 		vpalloc.add_extent(0xc0000000, 0xffff, MX_FREE);
+		vpalloc.add_extent(0xe0000000, 0x20000, MX_FREE);
 		vpalloc.mark_extent(0xc0000000, 0x100, MX_FIXED);
 		vpalloc.mark_extent((size_t)(&_kernel_start), (size_t)(&_kernel_end - &_kernel_start) >> 12, MX_FIXED);
 		vpalloc.allocate(8);
@@ -463,6 +598,7 @@ namespace mem {
 	void init_page_chain(void * first, int n) {
 		if(n < 1) return;
 		ChainPtr *nextpage;
+		uint32_t tfc = 0;
 		if(!first) xiv::print("VMM:ERR: Bad page allocation.\n");
 		if(!blockfreeptr) {
 			blockfreeptr = (ChainPtr*)first;
@@ -473,13 +609,14 @@ namespace mem {
 			nextpage = blockfreeptr;
 			while(nextpage->next) {
 				nextpage = nextpage->next;
-				xiv::printf("VMM:mNext: %0x\n", (uint32_t)nextpage);
+				tfc++;
+				xiv::printf("VMM:mNext: %d/%d %0x\n", tfc, tablefreeblocks, (uint32_t)nextpage);
 			}
 			nextpage->next = (ChainPtr*)first;
 			nextpage = nextpage->next;
 		}
 		tablefreeblocks += n;
-		while(n--) {
+		while(--n) {
 			nextpage->next = nextpage+1;
 			nextpage++;
 			xiv::printf("VMM:sNext: %0x\n", (uint32_t)nextpage);
@@ -518,7 +655,7 @@ namespace mem {
 			}
 			if(tablebase & MAP_LARGE) {
 				// ignore large mapping overwrite
-				xiv::print("VMM:WARN: Large map exist.\n");
+				//xiv::print("VMM:WARN: Large map exist./");
 			} else {
 				PageTableIndex *pti = pdpt->ptip[ofs_dp];
 				if(!pti) {
@@ -529,9 +666,11 @@ namespace mem {
 				if(!ptptr) {
 					xiv::printf("VMM:/%x/%x/%x/", ofs_dp, ofs_d, ofs_t);
 					xiv::print("add pagetable/");
-					if(tablefreeblocks < 2) {
+					if(tablefreeblocks < 20 && !tablefreelock) {
 						xiv::print("init_chain/");
-						init_page_chain(alloc_pages(40, 0), 40);
+						tablefreelock++;
+						init_page_chain(alloc_pages(20, 0), 20);
+						tablefreelock--;
 					}
 					ptptr = pti->ptp[ofs_d] = (PageTable*)blockfreeptr;
 					xiv::print("get_next/");
@@ -548,9 +687,9 @@ namespace mem {
 					}
 					_ix_loadcr3((uint32_t)&_ivix_phy_pdpt); // reset page tables
 				} else {
-					xiv::print("VMM:ERR: Page Table exist. ");
-					xiv::printhexx(ptptr->pte[ofs_t], 64); xiv::putc('>');
-					xiv::printhexx(phy.m, 64); xiv::putc(10);
+					//xiv::print("VMM:ERR: Page Table exist. ");
+					//xiv::printhexx(ptptr->pte[ofs_t], 64); xiv::putc('>');
+					//xiv::printhexx(phy.m, 64); xiv::putc(10);
 				}
 				if((tablebase & 1) == 0) {
 					xiv::print("map pagetable\n");
@@ -560,21 +699,6 @@ namespace mem {
 			}
 		}
 	}
-	void * alloc_pages(size_t mpc, uint32_t) {
-		xiv::print("MEM: Request real pages\n");
-		uint64_t bu = vpalloc.allocate(mpc);
-		if(bu == 0) return nullptr;
-		uint64_t ph = blkalloc.allocate(mpc);
-		if(ph == 0) return nullptr;
-		uint64_t cmpa = ph;
-		uint64_t cmva = bu;
-		for(size_t x = 0; x < mpc; x++) {
-			map_page(cmpa, (uintptr_t)cmva, MAP_RW);
-			cmpa += SM_PAGE_SIZE;
-			cmva += SM_PAGE_SIZE;
-		}
-		return (void*)bu;
-	}
 	void * request(size_t sz, void* hint, uint64_t phys, uint32_t flag) {
 		uint32_t mapflag = 0;
 		if(flag & RQ_RW) {
@@ -583,7 +707,7 @@ namespace mem {
 		if(flag & RQ_HINT) {
 			uintptr_t ba = (uintptr_t)hint;
 			uintptr_t enda = ba + (sz & ~(SM_PAGE_SIZE-1));
-			if(ba > 0xffff) {
+			if(ba > 0xffff) { // don't allow allocations at <64k VM
 				do {
 					map_page(phys, ba, mapflag);
 					phys += SM_PAGE_SIZE;
@@ -594,12 +718,27 @@ namespace mem {
 		}
 		return nullptr;
 	}
+	void * alloc_pages(size_t mpc, uint32_t) {
+		xiv::print("MEM: Request real pages\n");
+		uint64_t bu = vpalloc.allocate(mpc);
+		if(bu == 0) {
+			xiv::print("MEM: Virtual allocation failed\n");
+			return nullptr;
+		}
+		uint64_t ph = blkalloc.allocate(mpc);
+		if(ph == 0) {
+			xiv::print("MEM: Physical allocation failed\n");
+			return nullptr;
+		}
+		xiv::printf("MEM: Page allocation %0lx+%x > %0lx\n", ph, mpc * SM_PAGE_SIZE, bu);
+		request(mpc * SM_PAGE_SIZE, (void*)bu, ph, RQ_RW | RQ_HINT);
+		return (void*)bu;
+	}
 	int req_control(void (*)(void *, void *, uint32_t), void *) {
 		return 0;
 	}
 	int req_allocrange(void (*allocadd)(void *, uint64_t, uint32_t), void * t, uint32_t ml) {
-		uint32_t mmb = (ml / SM_PAGE_SIZE) + 1;
-		if(mmb < 16) mmb = 16;
+		uint32_t mmb = (ml / SM_PAGE_SIZE) + ((ml % SM_PAGE_SIZE)>0? 1 : 0);
 		uint64_t bu = vpalloc.allocate(mmb);
 		if(bu == 0) {
 			xiv::print("MEM: Virtual allocation failed\n");
@@ -622,6 +761,9 @@ namespace mem {
 			break;
 		case 2:
 			vpalloc.debug_table();
+			break;
+		case 3:
+			memalloc.debug_counts();
 			break;
 		default:
 			memalloc.debug_table();

@@ -284,14 +284,10 @@ void _kernel_main() {
 		for(int x = 0; hai[x]; x++, q++) tei[q] = (uint8_t)hai[x];
 		if(hw::ethdev) hw::ethdev->transmit(tei, 14+70);
 	}
-	mem::debug(0);
-	printf("Tei: %x\n", (uint32_t)tei);
 	kfree(tei);
-	mem::debug(0);
 	int cmdlen = 4096;
 	int cmdx = 0, cmdl = 0;
 	char *cmd = (char*)kmalloc(cmdlen);
-	mem::debug(0);
 	
 	bool busy = false;
 	uint32_t nxf = _ivix_int_n + 40;
@@ -329,23 +325,44 @@ void _kernel_main() {
 						case 'a':
 							{
 							char * leak=(char*)kmalloc(0x4000);
+							for(int ux = 0; ux < 0x4000; ux++) leak[ux] = 0x55;
 							mem::debug(0);
-							leak[0] = 7;
 							}
 							break;
 						case 's':
 							{
 							char * leak=(char*)kmalloc(0x800);
+							for(int ux = 0; ux < 0x800; ux++) leak[ux] = 0x55;
 							mem::debug(0);
-							leak[0] = 7;
 							}
+							break;
+						case 'S':
+							for(int mux = 0; mux < 128; mux++) {
+							char * leak=(char*)kmalloc(0x800);
+							for(int ux = 0; ux < 0x800; ux++) leak[ux] = 0x55;
+							}
+							mem::debug(3);
+							break;
+						case 'h':
+							{
+							char * leak=(char*)kmalloc(0x1000000);
+							for(int ux = 0; ux < 0x1000000; ux++) leak[ux] = 0xAA;
+							}
+							mem::debug(3);
 							break;
 						case 'l':
 							{
 							char * leak=(char*)kmalloc(0x10000);
-							mem::debug(0);
-							leak[0] = 7;
+							for(int ux = 0; ux < 0x10000; ux++) leak[ux] = 0x55;
 							}
+							mem::debug(3);
+							break;
+						case 'L':
+							{
+							char * leak=(char*)kmalloc(0x10000);
+							leak[0] = 0xaa;
+							}
+							mem::debug(3);
 							break;
 						case 'p':
 							mem::debug(1);
