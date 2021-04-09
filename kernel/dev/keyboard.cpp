@@ -26,6 +26,8 @@ namespace hw {
 Keyboard::Keyboard() {
 	state = 0;
 	istate = 0;
+	keyev = 0;
+	mods = 0;
 }
 
 Keyboard::~Keyboard() {

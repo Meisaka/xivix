@@ -53,7 +53,7 @@ uint16_t VirtTerm::getcol() const {
 	return col;
 }
 void VirtTerm::putc(char c) {
-	buffer[col + (width * row)] = {.code = (uint8_t)c, .attr = cattr | ATTR_UPDATE};
+	buffer[col + (width * (uint32_t)row)] = {.code = (uint8_t)c, .attr = cattr | ATTR_UPDATE};
 	col++;
 	if(col >= width) {
 		col = 0;
@@ -63,7 +63,7 @@ void VirtTerm::putc(char c) {
 void VirtTerm::putat(uint16_t x, uint16_t y, char v) {
 	if(x >= width) x = width - 1;
 	if(y >= height) y = height - 1;
-	buffer[x + (width * y)] = {.code = (uint8_t)v, .attr = cattr | ATTR_UPDATE};
+	buffer[x + (width * (uint32_t)y)] = {.code = (uint8_t)v, .attr = cattr | ATTR_UPDATE};
 }
 void VirtTerm::nextline() {
 	col = 0;
@@ -71,7 +71,7 @@ void VirtTerm::nextline() {
 	if(row >= height) {
 		row = height - 1;
 		VTCell *pr = buffer;
-		VTCell *cr = buffer+width;
+		VTCell *cr = buffer+(uint32_t)width;
 		for(int y = 1; y < height; y++) {
 			for(int x = 0; x < width; x++) {
 				if(pr->code != cr->code || pr->attr != cr->attr) {

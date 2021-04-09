@@ -54,16 +54,22 @@ void print(const char* s) {
 	while(*s != 0) { putc(*(s++)); }
 }
 
-void printdec(uint32_t d) {
-	char num[10];
+void printdec(uint64_t d, uint32_t s, int sf) {
+	char num[20];
 	unsigned l = 0;
-	if(!d) { putc('0'); return; }
-	while(d) {
-		num[9-l] = (d % 10) + '0';
+	if(!d) {
+		num[19] = '0';
+		l = 1;
+	} else while(d) {
+		num[19-l] = (d % 10) + '0';
 		d = d / 10;
 		l++;
 	}
-	printn(num+(10-l), l);
+	while(l < s) {
+		putc(sf);
+		s--;
+	}
+	printn(num+(20-l), l);
 }
 
 void printhex(uint32_t v) {
@@ -99,9 +105,9 @@ void printhex(uint64_t v) {
 		putc(c);
 	} while(i > 0);
 }
-void printhexs(uint64_t v) {
+void printhexs(uint64_t v, uint32_t s, int sf) {
 	int i;
-	for(i = 64; i > 4 && ((v >> (i-4)) & 0x0f) == 0; i-=4) putc(' '); // get digit length
+	for(i = s * 4; i > 4 && ((v >> (i-4)) & 0x0f) == 0; i-=4) putc(sf); // get digit length
 	do {
 		i -= 4;
 		char c = (v >> i) & 0x0f;
@@ -133,10 +139,12 @@ void printhexx(uint64_t v, uint32_t bits) {
 	} while(i > 0);
 }
 
+#define PMODE_LONG 3
 void printf(const char *ftr, ...) {
 	va_list v;
 	unsigned rs = 0;
 	int pad = 0;
+	int padl = 0;
 	uint32_t num;
 	uint64_t numx;
 
@@ -158,25 +166,41 @@ void printf(const char *ftr, ...) {
 			case '0':
 				pad = 1;
 				rs = 1;
+				padl = 8;
 				break;
 			case ' ':
 				pad = 2;
 				rs = 1;
+				padl = 8;
+				break;
+			case '1':
+			case '2':
+			case '3':
+			case '4':
+			case '5':
+			case '6':
+			case '7':
+			case '8':
+			case '9':
+				rs = 2;
+				padl = *ftr - '0';
 				break;
 			case 'l':
-				rs = 2;
+				rs = PMODE_LONG;
 				break;
 			case '%':
 				putc(*ftr);
 				break;
 			case 'd':
 				num = va_arg(v, uint32_t);
-				printdec(num);
+				printdec(num, padl, pad == 2 ? ' ':'0');
+				break;
+			case 's':
+				print(va_arg(v, const char *));
 				break;
 			case 'x':
 				num = va_arg(v, uint32_t);
-				if(pad == 2) printhexs(num);
-				else if(pad == 1) printhex(num, 32);
+				if(pad) printhexs(num, padl, pad == 2 ? ' ':'0');
 				else printhex(num);
 				break;
 			default:
@@ -185,6 +209,42 @@ void printf(const char *ftr, ...) {
 			}
 			break;
 		case 2:
+			rs = 0;
+			switch(*ftr) {
+			case '0':
+			case '1':
+			case '2':
+			case '3':
+			case '4':
+			case '5':
+			case '6':
+			case '7':
+			case '8':
+			case '9':
+				padl = padl * 10 + (*ftr - '0');
+				rs = 2;
+				break;
+			case 'l':
+				rs = PMODE_LONG;
+				break;
+			case 'd':
+				num = va_arg(v, uint32_t);
+				printdec(num, padl, pad == 2 ? ' ':'0');
+				break;
+			case 's':
+				print(va_arg(v, const char *));
+				break;
+			case 'x':
+				num = va_arg(v, uint32_t);
+				if(pad) printhexs(num, padl, pad == 2 ? ' ':'0');
+				else printhex(num);
+				break;
+			default:
+				putc('%');
+				putc(*ftr);
+			}
+			break;
+		case PMODE_LONG:
 			rs = 0;
 			switch(*ftr) {
 			case '0':
@@ -197,12 +257,11 @@ void printf(const char *ftr, ...) {
 				break;
 			case 'd':
 				numx = va_arg(v, uint64_t);
-				printdec(numx);
+				printdec(numx, padl, pad == 2 ? ' ':'0');
 				break;
 			case 'x':
 				numx = va_arg(v, uint64_t);
-				if(pad == 2) printhexs(numx);
-				else if(pad == 1) printhexx(numx, 64);
+				if(pad) printhexs(numx, padl, pad == 2 ? ' ':'0');
 				else printhex(numx);
 				break;
 			default:

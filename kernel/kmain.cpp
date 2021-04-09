@@ -127,6 +127,15 @@ uint8_t mapchar(uint32_t k, uint32_t mods) {
 	return 0;
 }
 
+int memeq(const uint8_t * a, const uint8_t * b, size_t l) {
+	int equ = 0;
+	for(; l; l--) {
+		equ |= (*a) - (*b);
+		a++; b++;
+	}
+	return equ;
+}
+
 typedef uint32_t dd;
 typedef uint16_t dw;
 typedef uint8_t db;
@@ -195,7 +204,7 @@ void _kernel_main() {
 	xiv::txtout = &lvga;
 	printf(" xivix Text mode hello\n");
 	mem::initialize();
-	VirtTerm *svt = new VirtTerm(128, 96);
+	VirtTerm *svt = new VirtTerm(240, 128);
 	xiv::txtout = svt;
 	printf("Fetching VBE\n");
 	VBEModeInfo *vidinfo = reinterpret_cast<VBEModeInfo*>(0xc0001200);
@@ -213,12 +222,12 @@ void _kernel_main() {
 	uint32_t vidl = vidinfo->x_res * vidinfo->y_res;
 	printf("Display clear\n");
 	for(uint32_t y = 0; y < vidl; y++) {
-		vid[y] = 0x0;
+		vid[y] = 0x002222;
 	}
 	FramebufferText *fbt = new FramebufferText(vid, vidinfo->x_res * (vidinfo->bits_per_pixel / 8), vidinfo->bits_per_pixel);
 
 	{
-		uvec2 ulr = uvec2::center_align(uvec2(128*8,96*8), uvec2(vidinfo->x_res, vidinfo->y_res));
+		uvec2 ulr = uvec2::center_align(uvec2(svt->width*6,svt->height*8), uvec2(vidinfo->x_res, vidinfo->y_res));
 		fbt->setoffset(ulr.x, ulr.y);
 	}
 
@@ -252,7 +261,7 @@ void _kernel_main() {
 
 	uint8_t *tei = (uint8_t*)kmalloc(2048);
 	if(hw::ethdev) {
-		hw::ethdev->init();
+		//hw::ethdev->init();
 		int q = 0;
 		for(; q < 6; q++) tei[q] = 0xff;
 		hw::ethdev->getmediaaddr(&tei[q]);
@@ -284,7 +293,7 @@ void _kernel_main() {
 		for(int x = 0; hai[x]; x++, q++) tei[q] = (uint8_t)hai[x];
 		if(hw::ethdev) hw::ethdev->transmit(tei, 14+70);
 	}
-	kfree(tei);
+	//kfree(tei);
 	int cmdlen = 4096;
 	int cmdx = 0, cmdl = 0;
 	char *cmd = (char*)kmalloc(cmdlen);
@@ -316,15 +325,18 @@ void _kernel_main() {
 				} else {
 					if(cmdx == 0) {
 						cmdx = cmdl;
-					}
-					if(cmdx == 1) {
+					} else if(cmdx == 1) {
 						switch(cmd[0]) {
+						case 'D':
+							mem::debug(4);
+							break;
 						case 'd':
 							mem::debug(0);
 							break;
 						case 'a':
 							{
 							char * leak=(char*)kmalloc(0x4000);
+							if(!leak) { xiv::printf("Allocation failed\n"); break; }
 							for(int ux = 0; ux < 0x4000; ux++) leak[ux] = 0x55;
 							mem::debug(0);
 							}
@@ -332,6 +344,7 @@ void _kernel_main() {
 						case 's':
 							{
 							char * leak=(char*)kmalloc(0x800);
+							if(!leak) { xiv::printf("Allocation failed\n"); break; }
 							for(int ux = 0; ux < 0x800; ux++) leak[ux] = 0x55;
 							mem::debug(0);
 							}
@@ -339,9 +352,14 @@ void _kernel_main() {
 						case 'S':
 							for(int mux = 0; mux < 128; mux++) {
 							char * leak=(char*)kmalloc(0x800);
+							if(!leak) { xiv::printf("Allocation failed\n"); break; }
 							for(int ux = 0; ux < 0x800; ux++) leak[ux] = 0x55;
 							}
 							mem::debug(3);
+							break;
+						case 'w':
+							if(hw::ethdev) hw::ethdev->transmit(tei, 14+70);
+							else xiv::printf("No network dev\n");
 							break;
 						case 'h':
 							{
@@ -353,13 +371,15 @@ void _kernel_main() {
 						case 'l':
 							{
 							char * leak=(char*)kmalloc(0x10000);
-							for(int ux = 0; ux < 0x10000; ux++) leak[ux] = 0x55;
+							if(!leak) { xiv::printf("Allocation failed\n"); break; }
+							for(int ux = 0; ux < 0x10000; ux++) leak[ux] = 0xfe;
 							}
 							mem::debug(3);
 							break;
 						case 'L':
 							{
 							char * leak=(char*)kmalloc(0x10000);
+							if(!leak) { xiv::printf("Allocation failed\n"); break; }
 							leak[0] = 0xaa;
 							}
 							mem::debug(3);
@@ -370,6 +390,10 @@ void _kernel_main() {
 						case 'v':
 							mem::debug(2);
 							break;
+						}
+					} else if(cmdx == 6) {
+						if(memeq((const uint8_t*)cmdx, (const uint8_t*)"/debug", 6) == 0) {
+							mem::debug(2);
 						}
 					}
 					cmdl = cmdx;

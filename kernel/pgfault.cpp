@@ -37,6 +37,18 @@ void pfhandle(void *, uint32_t, ixexptctx *ctx) {
 		ctx->ir->r_ecx, ctx->ir->r_edx,
 		ctx->ir->r_esi, ctx->ir->r_edi,
 		ctx->ir->r_ebp, ctx->ir->r_esp_hdl);
+	printf("kernel stack:\n");
+	uint32_t *fcs = (uint32_t*)ctx->ir->r_esp_hdl;
+	fcs += 4; // skip the IH stuff
+	for(int y = 0; y < 8; y++) {
+		printf("%0x:", fcs);
+		for(int x = 0; x < 4; x++) {
+			printf(" %0x", fcs[x]);
+		}
+		putc(10);
+		fcs += 4;
+	}
+	printf("EPF\n");
 	printattr(0);
 }
 

@@ -29,6 +29,8 @@ PCI::PCI() {
 PCI::~PCI() {
 }
 
+uint32_t verblevel = 0;
+
 union Multiword {
 	uint32_t w;
 	uint16_t h[2];
@@ -110,7 +112,6 @@ void scanbar(uint8_t b, uint8_t d, uint8_t f, uint32_t bar, uint32_t &r, uint32_
 }
 
 void dev_fn_check(uint8_t bus, uint8_t dev, uint8_t fn) {
-	uint32_t verblevel = 0;
 	Multiword info, cmst, dcl, hci, ex, iir;
 	PCIBlock cdb;
 	cdb.pciaddr = (1 << 31) | (bus << 16) | (dev << 11) | (fn << 8);

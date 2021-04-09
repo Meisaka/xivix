@@ -39,7 +39,13 @@ void instance_pci(PCIBlock &dv) {
 		case 0x10D3: // 82574L
 		case 0x104B: // ICH8/9
 		case 0x10CD: // ICH10
-			hw::ethdev = new hw::e1000(dv);
+		case 0x105E:
+		case 0x10A4: // 82571EB (Experimental)
+			{
+				hw::NetworkMAC *neth = new hw::e1000(dv);
+				neth->init();
+				if(!hw::ethdev) hw::ethdev = neth;
+			}
 			break;
 		default:
 			break;

@@ -250,7 +250,7 @@ bool e1000::init() {
 	r_ctrl.slu = 1;
 	viobase[0] = r_ctrl.value; // make sure link up is set
 	HWR_STATUS dsr = { .value = viobase[8>>2] };
-	while((viobase[8>>2] & (1 << 1)) == 0); // wait link up, TODO not forever!!!1!
+	//while((viobase[8>>2] & (1 << 1)) == 0); // wait link up, TODO not forever!!!1!
 	dsr.value = viobase[8>>2];
 	dsr.status();
 	viobase[0xd0>>2] = 0; // turn off interrupts again.
@@ -322,6 +322,7 @@ void e1000::transmit(void * buf, size_t sz) {
 	TRMT_DATA *txd = (TRMT_DATA*)&descpage->trmt[txtail];
 	descpage->trmt[txtail].v[1] = 0;
 	txd->address = mem::translate_page((uintptr_t)buf);
+	xiv::printf("e1000: TX[%x] PG: %x\n", txtail, (uintptr_t)buf);
 	txd->len = sz;
 	txd->dtype = 0x1;
 	txd->sta = 0;

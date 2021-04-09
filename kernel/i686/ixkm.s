@@ -1,6 +1,6 @@
 /* ***
  * i686/ixkm.s - Initialization and main entry for the kernel
- * Copyright (C) 2014-2015  Meisaka Yukara
+ * Copyright (C) 2014-2017  Meisaka Yukara
  *
  *
  * This program is free software; you can redistribute it and/or modify
@@ -460,17 +460,39 @@ _ive_GP:
 _ive_PF:
 .global _ive_PF
 	pusha			# "new" page fault / debug code
+	# stack:
+	# Hex,Item
+	# +34 SS (would go here for CPL changes)
+	# +30 ESP (would go here for CPL changes)
+	# +2C EFLAGS
+	# +28 CS
+	# +24 EIP
+	# +20 Error Code (Exceptions)
+	# +1C EAX
+	# +18 ECX
+	# +14 EDX
+	# +10 EBX
+	# +0C ESP (pointing to error code)
+	# +08 EBP
+	# +04 ESI
+	# +00 EDI <- Where current ESP ends up pointing
 	mov %esp, %eax
 	mov %eax, %edx
 	add $0x24, %edx
+	push %edx         # edx = ptr to EIP,CS,EFLAGS
+	push %eax         # eax = ptr to register dump
+	mov %cr2, %edx    # PF address
 	push %edx
-	push %eax
-	mov %cr2, %edx
+	mov 0x20(%eax), %edx # edx = error code
 	push %edx
-	mov 0x20(%eax), %edx
-	push %edx
-	mov %esp, %edx
+	mov %esp, %edx    # edx = ptr to all this stuff
 	mov $0x0e, %eax
+	# +C ptr to EIP,CS,EFLAGS
+	# +8 ptr to registers
+	# +4 PF address
+	# +0 Error code (again) <- where edx points
+	# eax = 0x0E
+	# edx = ptr (above)
 	call _iv_exhload
 	cli	# just stop
 	hlt
@@ -521,16 +543,16 @@ _ive_XM:
 
 _iv_exhload:
 	# edx holds struct ptr, eax holds exception#
-	lea ivix_except(,%eax,8), %esi
-	mov (%esi), %ebx
-	test %ebx, %ebx
+	lea ivix_except(,%eax,8), %esi # load address of ex handler info
+	mov (%esi), %ebx    # get address
+	test %ebx, %ebx     # test if null
 	je 1f
-	push %edx
+	push %edx           # push the exception and struct ptr
 	push %eax
-	movl 4(%esi), %eax
-	push %eax
-	call *%ebx
-	add $12, %esp
+	movl 4(%esi), %eax  # get the locals ptr param
+	push %eax           # push that on there
+	call *%ebx          # call the handler
+	add $12, %esp       # clean up this mess
 	1:
 	ret
 
