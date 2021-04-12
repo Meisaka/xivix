@@ -20,6 +20,9 @@
 
 namespace mem {
 
+constexpr size_t const PAGE_SIZE = 0x1000;
+constexpr size_t const PAGE_SIZE_LARGE = 0x200000;
+
 struct PhysicalAddress {
 	uint64_t m;
 	PhysicalAddress(uint64_t a) : m(a) {}
@@ -29,6 +32,7 @@ struct PhysicalAddress {
 	PhysicalAddress& operator=(const PhysicalAddress &p) { m = p.m; return *this; }
 	PhysicalAddress& operator=(uint64_t a) { m = a; return *this; }
 };
+typedef PhysicalAddress phyaddr_t;
 
 void ref_destroy(size_t r);
 int ref_add(size_t r);
@@ -109,30 +113,21 @@ public:
 	}
 };
 
-}
+enum REQUEST_FLAGS : uint32_t {
+	RQ_HINT = 0x1,
+	RQ_RW = 0x2,
+	RQ_ALLOC = 0x4,
+	RQ_EXEC = 0x8,
+	RQ_LARGE = 0x80,
+};
 
-typedef mem::PhysicalAddress phyaddr_t;
+void initialize();
+void debug(int);
+uint64_t translate_page(uintptr_t t);
+//void map_page(phyaddr_t, uintptr_t, uint32_t);
+void * vmm_request(size_t, void*, uint64_t, uint32_t);
 
-namespace mem {
-
-	enum MAP_FLAGS : uint32_t {
-		MAP_RW = 0x2,
-		MAP_USER = 0x4,
-		MAP_EXEC = 0x8,
-		MAP_LARGE = 0x80,
-	};
-	enum REQUEST_FLAGS : uint32_t {
-		RQ_RW = 0x2,
-		RQ_HINT = 0x1,
-	};
-
-	void initialize();
-	void debug(int);
-	uint64_t translate_page(uintptr_t t);
-	void map_page(phyaddr_t, uintptr_t, uint32_t);
-	void * alloc_pages(size_t, uint32_t);
-	void * request(size_t, void*, uint64_t, uint32_t);
-}
+} // namespace mem
 
 extern "C" {
 void * kmalloc(size_t l);
@@ -141,4 +136,3 @@ void kfree(void *);
 }
 
 #endif
-
