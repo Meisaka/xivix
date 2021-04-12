@@ -19,7 +19,7 @@
 
 #include "vgatext.hpp"
 
-constexpr static uint16_t *vgabase = (uint16_t*)0xc00B8000;
+extern "C" volatile uint16_t _vgabase[];
 
 VGAText::VGAText() {
 	col = 0;
@@ -31,7 +31,7 @@ VGAText::VGAText() {
 VGAText::~VGAText() {}
 
 void VGAText::putc(char c) {
-	vgabase[col + (width*row)] = attrib | c;
+	_vgabase[col + (width*row)] = attrib | c;
 	col++;
 	if(col >= width) {
 		nextline();
@@ -60,6 +60,7 @@ void VGAText::setto(uint16_t c, uint16_t r) {
 	col = c;
 }
 void VGAText::putat(uint16_t c, uint16_t r, char v) {
-	vgabase[c + (width * r)] = attrib | v;
+	if(r > height) r = height;
+	if(c > width) c = width;
+	_vgabase[c + (width * r)] = attrib | v;
 }
-

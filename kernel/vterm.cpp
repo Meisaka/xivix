@@ -26,16 +26,20 @@ VirtTerm::VirtTerm(uint16_t w, uint16_t h) {
 	uint32_t sz = w * h;
 	height = h;
 	width = w;
-	col = 0;
-	row = 0;
-	cattr = 0;
 	buffer = new VTCell[sz];
-	for(uint32_t t = 0; t < sz; t++) {
-		buffer[t] = {.code = 32, .attr = ATTR_UPDATE};
-	}
+	reset();
 }
 VirtTerm::~VirtTerm() {
 	delete buffer;
+}
+void VirtTerm::reset() {
+	col = 0;
+	row = 0;
+	cattr = 0;
+	uint32_t sz = width * height;
+	for(uint32_t t = 0; t < sz; t++) {
+		buffer[t] = {.code = 32, .attr = ATTR_UPDATE};
+	}
 }
 void VirtTerm::setto(uint16_t x, uint16_t y) {
 	if(x >= width) x = width - 1;
@@ -90,4 +94,3 @@ void VirtTerm::nextline() {
 }
 
 }
-

@@ -195,117 +195,283 @@ namespace hw {
 	extern NetworkMAC *ethdev;
 }
 
+xiv::VirtTerm *svt;
+FramebufferText *fbt;
 VGAText lvga;
+hw::Keyboard *kb1;
+constexpr int cmdlen = 4096;
+int cmdx = 0, cmdl = 0;
+char *cmd;
+uint32_t nxf;
+bool flk = false;
+uint8_t *tei = 0;
+uint32_t tei_check;
 
-extern "C" {
-void _kernel_main() {
+void send_via_udp(const char * msg) {
+	if(!hw::ethdev) return;
+	int q = 42;
+	int udp_length;
+	uint32_t udp_check = tei_check;
+	for(udp_length = 0; msg[udp_length] && q < 1400; udp_length++, q++) {
+		uint8_t c = (uint8_t)msg[udp_length];
+		tei[q] = c;
+		if(udp_length & 1) {
+			udp_check += c;
+		} else {
+			udp_check += c << 8;
+		}
+	}
+	udp_length += 8;
+	uint16_t ip_length = 20 + (uint16_t)udp_length;
+	if(ip_length < 50) ip_length = 50;
+	tei[16] = (uint8_t)(ip_length >> 8);
+	tei[17] = (uint8_t)ip_length;
+	// finish the udp checksum
+	udp_check += udp_length + udp_length; // psudo header + to be written
+	while(udp_check & 0xffff0000u) { // the ones complement thing
+		udp_check = (udp_check & 0xfffful) + (udp_check >> 16);
+	}
+	if(udp_check != 0xffff) udp_check = ~udp_check; // invert it
+	// recalculate the IP checksum
+	uint32_t ip_check = 0;
+	for(q = 14; q < 34; q += 2) {
+		if(q == 24) continue;
+		ip_check += (tei[q] << 8) | tei[q + 1];
+	}
+	while(ip_check & 0xffff0000u) {
+		ip_check = (ip_check & 0xfffful) + (ip_check >> 16);
+	}
+	ip_check = ~ip_check;
+	tei[24] = (uint8_t)(ip_check >> 8);
+	tei[25] = (uint8_t)ip_check;
+	tei[38] = (uint8_t)(udp_length >> 8);
+	tei[39] = (uint8_t)udp_length;
+	tei[40] = (uint8_t)(udp_check >> 8);
+	tei[41] = (uint8_t)udp_check;
+	hw::ethdev->transmit(tei, 14+ip_length);
+}
+
+void handle_key() {
+	uint32_t k = kb1->pop_key();
+	uint8_t ch = mapchar(k, kb1->mods);
+	if(!ch)
+		return;
+	xiv::putc(ch);
+	if(ch != 10) {
+		if(fbt) fbt->render_vc(*svt);
+		if(cmdx < cmdlen) cmd[cmdx++] = ch;
+	} else {
+		if(cmdx == 0) {
+			cmdx = cmdl;
+		} else if(cmdx == 1) {
+			switch(cmd[0]) {
+			case 'D':
+				mem::debug(4);
+				break;
+			case 'd':
+				mem::debug(0);
+				break;
+			case 'a':
+				{
+				char * leak=(char*)kmalloc(0x4000);
+				if(!leak) { xiv::printf("Allocation failed\n"); break; }
+				for(int ux = 0; ux < 0x4000; ux++) leak[ux] = 0x55;
+				mem::debug(0);
+				}
+				break;
+			case 's':
+				{
+				char * leak=(char*)kmalloc(0x800);
+				if(!leak) { xiv::printf("Allocation failed\n"); break; }
+				for(int ux = 0; ux < 0x800; ux++) leak[ux] = 0x55;
+				mem::debug(0);
+				}
+				break;
+			case 'S':
+				for(int mux = 0; mux < 128; mux++) {
+				char * leak=(char*)kmalloc(0x800);
+				if(!leak) { xiv::printf("Allocation failed\n"); break; }
+				for(int ux = 0; ux < 0x800; ux++) leak[ux] = 0x55;
+				}
+				mem::debug(3);
+				break;
+			case 'w':
+				if(hw::ethdev) send_via_udp("Xivix network test message\n");
+				else xiv::printf("No network dev\n");
+				break;
+			case 'h':
+				{
+				char * leak=(char*)kmalloc(0x1000000);
+				for(int ux = 0; ux < 0x1000000; ux++) leak[ux] = 0xAA;
+				}
+				mem::debug(3);
+				break;
+			case 'l':
+				{
+				char * leak=(char*)kmalloc(0x10000);
+				if(!leak) { xiv::printf("Allocation failed\n"); break; }
+				for(int ux = 0; ux < 0x10000; ux++) leak[ux] = 0xfe;
+				}
+				mem::debug(3);
+				break;
+			case 'L':
+				{
+				char * leak=(char*)kmalloc(0x10000);
+				if(!leak) { xiv::printf("Allocation failed\n"); break; }
+				leak[0] = 0xaa;
+				}
+				mem::debug(3);
+				break;
+			case 'p':
+				mem::debug(1);
+				break;
+			case 'v':
+				mem::debug(2);
+				break;
+			}
+		} else if(cmdx == 6) {
+			if(memeq((const uint8_t*)cmdx, (const uint8_t*)"/debug", 6) == 0) {
+				mem::debug(2);
+			}
+		}
+		cmdl = cmdx;
+		cmdx = 0;
+	}
+	nxf = _ivix_int_n + 10;
+	flk = true;
+	if(fbt) fbt->putat(svt->getcol(), svt->getrow(), '_');
+}
+
+xiv::VTCell static_vt_buffer[240*128];
+
+extern "C" void _kernel_main() {
 	using namespace xiv;
 	uint32_t k = 0;
 	xiv::txtout = &lvga;
-	printf(" xivix Text mode hello\n");
+	const char *border_str = "**************************************";
+	printf("%s%s\n xivix Text mode hello\n%s%s\n",border_str,border_str,border_str,border_str);
+	VirtTerm lvt;
+	lvt.width = 240;
+	lvt.height = 96;
+	lvt.buffer = static_vt_buffer;
+	lvt.reset();
+	//xiv::txtout = svt = &lvt;
 	mem::initialize();
-	VirtTerm *svt = new VirtTerm(240, 128);
-	xiv::txtout = svt;
+	// Dynamic VTerm
+	//svt = new VirtTerm(240, 128);
+	//xiv::txtout = svt;
 	printf("Fetching VBE\n");
 	VBEModeInfo *vidinfo = reinterpret_cast<VBEModeInfo*>(0xc0001200);
-	printf("Mapping video pages...\n");
-	{
+	if(vidinfo->phys_base) {
+		printf("Mapping video pages...\n");
 		uint64_t pbase = vidinfo->phys_base;
-		uint32_t vbase = 0xd0000000;
-		for(int j = 0; j < 4; j++) {
-			mem::map_page({pbase}, vbase, mem::MAP_RW | mem::MAP_LARGE);
-			pbase += 0x200000;
-			vbase += 0x200000;
+		uint32_t *vid = reinterpret_cast<uint32_t*>(0xd0000000);
+		mem::vmm_request(0x800000, vid, pbase, mem::RQ_RW | mem::RQ_LARGE | mem::RQ_HINT);
+		uint32_t vidl = vidinfo->x_res * vidinfo->y_res;
+		printf("Display clear\n");
+		for(uint32_t y = 0; y < vidl; y++) {
+			vid[y] = 0x002222;
 		}
+		printf("Video info: %x %dx%d : %d @%x\nMModel: %x\n",
+				vidinfo->mode_attrib,
+				vidinfo->x_res,
+				vidinfo->y_res,
+				vidinfo->bits_per_pixel,
+				vidinfo->phys_base,
+				vidinfo->mem_model
+			 );
+		fbt = new FramebufferText(vid, vidinfo->x_res * (vidinfo->bits_per_pixel / 8), vidinfo->bits_per_pixel);
+		svt = &lvt;
+		xiv::txtout = svt;
+ 		uvec2 ulr = uvec2::center_align(uvec2(svt->width*6,svt->height*8), uvec2(vidinfo->x_res, vidinfo->y_res));
+ 		fbt->setoffset(ulr.x, ulr.y);
+ 		txtvc = svt;
+ 		txtfb = fbt;
+		printf("Framebuffer setup complete\n");
+	} else {
+		printf("Not using VBE\n");
 	}
-	uint32_t *vid = reinterpret_cast<uint32_t*>(0xd0000000);
-	uint32_t vidl = vidinfo->x_res * vidinfo->y_res;
-	printf("Display clear\n");
-	for(uint32_t y = 0; y < vidl; y++) {
-		vid[y] = 0x002222;
-	}
-	FramebufferText *fbt = new FramebufferText(vid, vidinfo->x_res * (vidinfo->bits_per_pixel / 8), vidinfo->bits_per_pixel);
-
-	{
-		uvec2 ulr = uvec2::center_align(uvec2(svt->width*6,svt->height*8), uvec2(vidinfo->x_res, vidinfo->y_res));
-		fbt->setoffset(ulr.x, ulr.y);
-	}
-
-	txtvc = svt;
-	txtfb = fbt;
-	printf("Video info: %x %dx%d : %d @%x\nMModel: %x\n",
-			vidinfo->mode_attrib,
-			vidinfo->x_res,
-			vidinfo->y_res,
-			vidinfo->bits_per_pixel,
-			vidinfo->phys_base,
-			vidinfo->mem_model
-		 );
 
 	show_mem_map();
 
 	printf("  XIVIX kernel hello!\n");
 
+	//_ix_totalhalt();
+
 	pfinit();
 	hw::init();
 
+	printf("Scanning PS/2\n");
 	hw::PS2 *psys = new hw::PS2();
-	hw::Keyboard *kb1 = new hw::Keyboard();
+	kb1 = new hw::Keyboard();
 	kb1->lastkey2 = 0xffff;
 	psys->add_kbd(kb1);
 	psys->init();
 
+	printf("PCI dump\n");
 	pci::bus_dump();
 
-	fbt->render_vc(*svt);
+	if(vidinfo->phys_base) fbt->render_vc(*svt);
 
-	uint8_t *tei = (uint8_t*)kmalloc(2048);
+	printf("Setup packet buffer\n");
+	tei = (uint8_t*)kmalloc(2048);
 	if(hw::ethdev) {
 		//hw::ethdev->init();
 		int q = 0;
-		for(; q < 6; q++) tei[q] = 0xff;
+		tei[0] = 0x00; tei[1] = 0xc; tei[2] = 0x29;
+		tei[3] = 0x4e; tei[4] = 0x51; tei[5] = 0x2b;
+		q += 6;
 		hw::ethdev->getmediaaddr(&tei[q]);
 		q += 6;
 		tei[q++] = 0x08;
 		tei[q++] = 0x00;
 		tei[q++] = 0x45;
 		tei[q++] = 0x00;
-		tei[q++] = 0x00; //len
-		tei[q++] = 70;
+		q += 2; // IP header + payload length, to be filled later
 		tei[q++] = 0x00; // Ident
 		tei[q++] = 0x00;
 		tei[q++] = 0x00; // flags
 		tei[q++] = 0x00; // frag
 		tei[q++] = 0x08; // TTL
-		tei[q++] = 0xee; // Proto
-		tei[q++] = 0xb1; // chksum
-		tei[q++] = 0xcb;
-
-		tei[q++] = 0x00; // Src
+		tei[q++] = 17; // Proto
+		q += 2; // checksum, to be computed
+		tei[q++] = 192; // Src
+		tei[q++] = 168;
+		tei[q++] = 12;
+		tei[q++] = 59;
+		tei[q++] = 192; // Dst
+		tei[q++] = 168;
+		tei[q++] = 12;
+		tei[q++] = 12;
+		tei[q++] = 0xc0;
+		tei[q++] = 0xcc;
+		tei[q++] = 0x80;
 		tei[q++] = 0x00;
-		tei[q++] = 0x00;
-		tei[q++] = 0x00;
-		tei[q++] = 0xFF; // Dst
-		tei[q++] = 0xFF;
-		tei[q++] = 0xFF;
-		tei[q++] = 0xFF;
-		const char * const hai = "HELLO WORLD";
-		for(int x = 0; hai[x]; x++, q++) tei[q] = (uint8_t)hai[x];
-		if(hw::ethdev) hw::ethdev->transmit(tei, 14+70);
+		// length and final checksum computed later
+		// compute psudo header initial checksum
+		tei_check = tei[23];
+		tei_check += (tei[26] << 8) | tei[27];
+		tei_check += (tei[28] << 8) | tei[29];
+		tei_check += (tei[30] << 8) | tei[31];
+		tei_check += (tei[32] << 8) | tei[33];
+		tei_check += (tei[34] << 8) | tei[35];
+		tei_check += (tei[36] << 8) | tei[37];
+		send_via_udp("HELLO WORLz\n");
 	}
-	//kfree(tei);
-	int cmdlen = 4096;
-	int cmdx = 0, cmdl = 0;
-	char *cmd = (char*)kmalloc(cmdlen);
-	
+
+	printf("Command loop start\n");
+	cmd = (char*)kmalloc(cmdlen);
+
 	bool busy = false;
-	uint32_t nxf = _ivix_int_n + 40;
-	bool flk = false;
+	nxf = _ivix_int_n + 40;
+
 	while(true) {
 		if(_ivix_int_n > nxf) {
 			nxf = _ivix_int_n + 10;
 			flk =! flk;
-			fbt->putat(svt->getcol(), svt->getrow(), flk?'_':' ');
+			if(fbt) {
+				fbt->putat(svt->getcol(), svt->getrow(), flk?'_':' ');
+			}
 		}
 		psys->handle();
 		if(psys->waiting()) {
@@ -315,94 +481,7 @@ void _kernel_main() {
 		}
 		if(kb1->has_key()) {
 			busy = true;
-			uint32_t k = kb1->pop_key();
-			uint8_t ch = mapchar(k, kb1->mods);
-			if(ch) {
-				putc(ch);
-				if(ch != 10) {
-					fbt->render_vc(*svt);
-					if(cmdx < cmdlen) cmd[cmdx++] = ch;
-				} else {
-					if(cmdx == 0) {
-						cmdx = cmdl;
-					} else if(cmdx == 1) {
-						switch(cmd[0]) {
-						case 'D':
-							mem::debug(4);
-							break;
-						case 'd':
-							mem::debug(0);
-							break;
-						case 'a':
-							{
-							char * leak=(char*)kmalloc(0x4000);
-							if(!leak) { xiv::printf("Allocation failed\n"); break; }
-							for(int ux = 0; ux < 0x4000; ux++) leak[ux] = 0x55;
-							mem::debug(0);
-							}
-							break;
-						case 's':
-							{
-							char * leak=(char*)kmalloc(0x800);
-							if(!leak) { xiv::printf("Allocation failed\n"); break; }
-							for(int ux = 0; ux < 0x800; ux++) leak[ux] = 0x55;
-							mem::debug(0);
-							}
-							break;
-						case 'S':
-							for(int mux = 0; mux < 128; mux++) {
-							char * leak=(char*)kmalloc(0x800);
-							if(!leak) { xiv::printf("Allocation failed\n"); break; }
-							for(int ux = 0; ux < 0x800; ux++) leak[ux] = 0x55;
-							}
-							mem::debug(3);
-							break;
-						case 'w':
-							if(hw::ethdev) hw::ethdev->transmit(tei, 14+70);
-							else xiv::printf("No network dev\n");
-							break;
-						case 'h':
-							{
-							char * leak=(char*)kmalloc(0x1000000);
-							for(int ux = 0; ux < 0x1000000; ux++) leak[ux] = 0xAA;
-							}
-							mem::debug(3);
-							break;
-						case 'l':
-							{
-							char * leak=(char*)kmalloc(0x10000);
-							if(!leak) { xiv::printf("Allocation failed\n"); break; }
-							for(int ux = 0; ux < 0x10000; ux++) leak[ux] = 0xfe;
-							}
-							mem::debug(3);
-							break;
-						case 'L':
-							{
-							char * leak=(char*)kmalloc(0x10000);
-							if(!leak) { xiv::printf("Allocation failed\n"); break; }
-							leak[0] = 0xaa;
-							}
-							mem::debug(3);
-							break;
-						case 'p':
-							mem::debug(1);
-							break;
-						case 'v':
-							mem::debug(2);
-							break;
-						}
-					} else if(cmdx == 6) {
-						if(memeq((const uint8_t*)cmdx, (const uint8_t*)"/debug", 6) == 0) {
-							mem::debug(2);
-						}
-					}
-					cmdl = cmdx;
-					cmdx = 0;
-				}
-				nxf = _ivix_int_n + 10;
-				flk = true;
-				fbt->putat(svt->getcol(), svt->getrow(), '_');
-			}
+			handle_key();
 		}
 		if(!busy) {
 			_ix_halt();
@@ -411,6 +490,3 @@ void _kernel_main() {
 	}
 	_ix_totalhalt();
 }
-
-} // extern C
-

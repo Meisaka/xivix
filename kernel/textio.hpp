@@ -24,6 +24,7 @@
 
 namespace xiv {
 struct TextIO {
+	virtual void reset() {};
 	virtual void setto(uint16_t c, uint16_t r) = 0;
 	virtual uint16_t getrow() const = 0;
 	virtual uint16_t getcol() const = 0;
@@ -35,4 +36,3 @@ struct TextIO {
 } // ns xiv
 
 #endif
-

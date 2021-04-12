@@ -27,7 +27,7 @@ static const uint32_t ec_font_w = 6;
 static const uint32_t ec_font_h = 8;
 
 static const uint32_t ufgcolors[16] = {
-	0x00cccccc,
+	0x00888888,
 	0x00ee4444,
 };
 static const uint32_t ubgcolors[16] = {
@@ -144,4 +144,3 @@ void FramebufferText::nextline() {
 		row = 0;
 	}
 }
-

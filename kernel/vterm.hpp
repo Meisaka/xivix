@@ -42,8 +42,10 @@ public:
 	uint16_t width;
 	uint32_t cattr;
 public:
+	VirtTerm() {}
 	VirtTerm(uint16_t w, uint16_t h);
 	~VirtTerm();
+	void reset() override;
 	void setto(uint16_t x, uint16_t y) override;
 	uint16_t getrow() const override;
 	uint16_t getcol() const override;
@@ -56,4 +58,3 @@ public:
 }
 
 #endif
-

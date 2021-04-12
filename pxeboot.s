@@ -656,7 +656,7 @@ dokernel:
 	mov %ax, %ds:kevseg
 1:	dec %ecx
 	cmp %ecx, %ecx
-	jne 1b	
+	jne 1b
 	mov kev+2, %bx
 	call hex16out
 	mov kev, %bx
@@ -735,7 +735,7 @@ dovbe:
 	call hex16out
 	mov $' ', %bl
 	call chout
-	
+
 	mov $4, %cx
 	add $14, %di
 1:
@@ -827,17 +827,17 @@ modeloop:
 	je vmode1024
 	cmp $1280, %bx
 	je vmode1280
-	cmp $1600, %bx	# mode "1600"
+	cmp $1440, %bx	# mode width
 	jne modeend
 	mov %es:20(%di), %bx	# Yres
-	cmp $1200, %bx
+	cmp $900, %bx
 	jne modeend
 	mov %es:24(%di), %bx	# bpp:planes
 	mov $0x22, %ax
-	cmp $0x2001, %bx	# 1600x1200 @32 (most preferred)
+	cmp $0x2001, %bx	# @32 (most preferred)
 	je vbepickmode
 	mov $0x21, %ax
-	cmp $0x1001, %bx	# 1600x1200 @16	(favor of size over depth)
+	cmp $0x1001, %bx	# @16	(favor of size over depth)
 	je vbepickmode
 	jmp modeend
 vmode1024:
@@ -950,11 +950,10 @@ domemmap:
 	clc
 	ret
 6:	stc
-	ret	
+	ret
 rmout:
 	push %si
 	mov $0x00B8002, %esi
 	movw %bx, %ds:0(%esi)
 	pop %si
 	ret
-

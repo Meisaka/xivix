@@ -46,7 +46,7 @@ ixstk:
 # data tables
 
 _ivix_idt_ptr:
-.word 0x07ff 
+.word 0x07ff
 .int _ivix_idt
 
 _ivix_gdt_ptr:
@@ -114,7 +114,7 @@ _ivix_phy_pdpt:
 .global _ivix_phy_pdpt
 .set _ivix_pdpt, _ivix_phy_pdpt + 0xc0000000
 .global _ivix_pdpt
-.fill 32, 2, 0xfe00
+.fill 64, 2, 0xfe00
 
 .section .ctors.begin
 .int 0xffffffff
@@ -128,7 +128,7 @@ _kernel_entry:
 	shr $2, %ecx
 	xor %eax, %eax
 	rep stosl %eax, (%edi)
-	
+
 	mov $ixstk, %esp
 	lgdt _ivix_gdt_ptr	# load GDT
 	call _ix_makeidt	# make and load IDT
@@ -137,16 +137,18 @@ _kernel_entry:
 
 	sub $0xc, %esp		# align the stack
 	call _ix_construct	# call ctors
+	call _ix_ecentry    # start the comm port
 	sti			# interupts on
 	call _kernel_main	# jump to C/C++
 	jmp _ix_halt		# idle loop if we get here
 
 _iv_regdump:
+	call ixcom_putc_x
+	movb $'+', %al
+	call ixcom_putc_x
 	push %ebp
 	mov %esp, %ebp
-	movl 0x0c(%ebp), %ecx
-	movw $0x0500+'0', %ax
-	mov $0xC00B8000 + 20 + (6 * 160), %edi
+	lea 0x08(%esp), %ecx
 	mov $rdumpnames, %esi
 	call putzstr
 	movl 0x1c(%ecx), %ebx	# EAX
@@ -160,7 +162,6 @@ _iv_regdump:
 	call putzstr
 	movl 0x10(%ecx), %ebx	# EBX
 	call puthex32
-	add $56, %edi
 	call putzstr
 	movl 0x0c(%ecx), %ebx	# ESP
 	call puthex32
@@ -173,9 +174,8 @@ _iv_regdump:
 	call putzstr
 	movl 0x0(%ecx), %ebx	# EDI
 	call puthex32
-	add $56, %edi
 	call putzstr
-	movl 0x08(%ebp), %ecx
+	lea 0x2c(%esp), %ecx
 	movl 0x0(%ecx), %ebx	# EIP
 	call puthex32
 	call putzstr
@@ -187,75 +187,65 @@ _iv_regdump:
 	call putzstr
 	movl -0x4(%ecx), %ebx	# N (Extra)
 	call puthex32
-	add $56, %edi
 	call putzstr
 	mov %cr2, %ebx
 	call puthex32
-	add $68, %edi
 	call putzstr
-	movl 0x0c(%ebp), %ecx
-	movl 0x0c(%ecx), %esi	# ESP
-	mov $32, %edx
-	add $56, %edi
-2:	and %edx, %edx
+	lea 0x34(%esp), %esi	# ESP
+	mov $32, %edi
+2:	and %edi, %edi
 	je 3f
-	add $66, %edi
+	mov $10, %al
+	call ixcom_putc_x
 	mov %esi, %ebx
 	call puthex32
-	add $6, %edi
 1:	mov 0(%esi), %ebx
 	call puthex32
-	add $2, %edi
 	add $4, %esi
-	sub $1, %edx
-	test $3, %dx
+	sub $1, %edi
+	test $3, %di
 	je 2b
-	and %edx, %edx
+	and %edi, %edi
 	jne 1b
 3:
 	pop %ebp
 	ret
 rdumpnames:
-	.asciz " EAX="
+	.asciz "\n EAX="
 	.asciz " ECX="
 	.asciz " EDX="
 	.asciz " EBX="
-	.asciz " ESP="
+	.asciz "\n ESP="
 	.asciz " EBP="
 	.asciz " ESI="
 	.asciz " EDI="
-	.asciz " EIP="
+	.asciz "\n EIP="
 	.asciz "  CS="
 	.asciz " FLG="
 	.asciz "  N ="
-	.asciz " CR2="
-	.asciz " *STACK* "
+	.asciz "\n CR2="
+	.asciz "\n *STACK*"
 puthex32:
 	push %ecx
-	movw $0x5F00, %ax
 	mov $8, %ecx
 1:	rol $4, %ebx
 	mov %bl, %al
-	call puthexchar
+	and $0xf, %al
+	cmp $0xa, %al
+	jl 2f
+	add $7, %al
+2:	add $'0', %al
+	call ixcom_putc_x
 	loop 1b
 	pop %ecx
 	ret
 putzstr:
-	mov $0x5700, %ax
 1:	lodsb
 	test %al, %al
 	jz 1f
-	stosw
+	call ixcom_putc_x
 	jmp 1b
 1:	ret
-puthexchar:
-	and $0xf, %al
-	cmp $0xa, %al
-	jl 1f
-	add $7, %al
-1:	add $'0', %al
-	stosw
-	ret
 
 .set COM_DATA, 0x3f8
 .set COM_INTR, COM_DATA + 1
@@ -291,6 +281,8 @@ ix_initcom:
 
 ixcom_putc:
 .global ixcom_putc
+	movl 4(%esp), %eax
+ixcom_putc_x:
 	mov $COM_LS, %dx
 	mov %al, %ah
 1:	inb %dx, %al
@@ -299,13 +291,19 @@ ixcom_putc:
 	mov $COM_DATA, %dx
 	mov %ah, %al
 	outb %al, %dx
+	cmp $10, %ah
+	je 1f
 	ret
+1:	mov $13, %al
+	jmp ixcom_putc_x
 
 ixcom_printz:
 1:	lodsb
 	test %al, %al
 	jz 1f
+	push %eax
 	call ixcom_putc
+	pop %eax
 	jmp 1b
 1:	ret
 
@@ -314,7 +312,8 @@ ixcom_hello:
 	mov $_lc_hello, %esi
 	call ixcom_printz
 	ret
-_lc_hello: .asciz "hello"
+_lc_hello: .asciz "hello\n"
+_lc_totalhalt: .asciz "totalhalt\n"
 
 _ix_ecentry:
 	call ix_initcom
@@ -326,27 +325,21 @@ __cxa_pure_virtual:
 	push %cs
 	pushf
 	pusha
-	movw $0x0500+'P', %ax
-	movw %ax, 0xC00B8086
 	movw $0x0500+'V', %ax
-	movw %ax, 0xC00B8088
 	call _iv_regdump
-	cli
-	hlt
+	call _ix_totalhalt
 _ive_DE:
 .global _ive_DE
 	pusha
 	movw $0x0500+'0', %ax
-	movw %ax, 0xC00B8082
 	call _iv_regdump
 	popa
 	iret
 _ive_DB:
 .global _ive_DB
 	pusha
-	call _iv_regdump
 	movw $0x1C00+'1', %ax
-	movw %ax, 0xC00B8082
+	call _iv_regdump
 	popa
 	iret
 _ive_X2:
@@ -360,85 +353,73 @@ _ive_X2:
 _ive_BP:
 .global _ive_BP
 	pusha
-	call _iv_regdump
 	movw $0x1C00+'3', %ax
-	movw %ax, 0xC00B8082
+	call _iv_regdump
 	popa
 	iret
 _ive_OF:
 .global _ive_OF
 	pusha
-	call _iv_regdump
 	movw $0x1C00+'4', %ax
-	movw %ax, 0xC00B8082
+	call _iv_regdump
 	popa
 	iret
 _ive_BR:
 .global _ive_BR
 	pusha
-	call _iv_regdump
 	movw $0x1C00+'5', %ax
-	movw %ax, 0xC00B8082
+	call _iv_regdump
 	popa
 	iret
 _ive_UD:
 .global _ive_UD
 	pusha
-	call _iv_regdump
 	movw $0x1C00+'6', %ax
-	movw %ax, 0xC00B8082
-	cli
-	hlt
+	call _iv_regdump
+	call _ix_totalhalt
 	popa
 	iret
 _ive_NM:
 .global _ive_NM
 	pusha
-	call _iv_regdump
 	movw $0x1C00+'7', %ax
-	movw %ax, 0xC00B8082
+	call _iv_regdump
 	popa
 	iret
 _ive_DF:
 .global _ive_DF
 	pusha
-	call _iv_regdump
 	movw $0x6C00+'D', %ax
-	movw %ax, 0xC00B8082
+	call _iv_regdump
 	movw $0x6C00+'F', %ax
 	movw %ax, 0xC00B8084
-	cli
-	hlt
+	call _ix_totalhalt
 _ive_X9:
 .global _ive_X9
 	pusha
-	call _iv_regdump
 	movw $0x1C00+'9', %ax
-	movw %ax, 0xC00B8082
+	call _iv_regdump
 	popa
 	iret
 _ive_TS:
 .global _ive_TS
 	pusha
-	call _iv_regdump
 	movw $0x1C00+'A', %ax
-	movw %ax, 0xC00B8082
+	call _iv_regdump
 	popa
 	iret
 _ive_NP:
 .global _ive_NP
 	pusha
-	call _iv_regdump
 	movw $0x1C00+'B', %ax
-	movw %ax, 0xC00B8082
+	call _iv_regdump
 	popa
 	iret
 _ive_SS:
 .global _ive_SS
 	pusha
-	call _iv_regdump
 	movw $0x1C00+'C', %ax
-	movw %ax, 0xC00B8082
+	call _iv_regdump
 	popa
 	iret
 _ive_GP:
@@ -448,18 +429,18 @@ _ive_GP:
 	push %eax
 	add $0x24, %eax
 	push %eax
-	call _iv_regdump
 	movw $0x1C00+'G', %ax
-	movw %ax, 0xC00B8082
+	call _iv_regdump
 	movw $0x1C00+'P', %ax
 	movw %ax, 0xC00B8084
-	cli
-	hlt
+	call _ix_totalhalt
 	popa
 	iret
 _ive_PF:
 .global _ive_PF
 	pusha			# "new" page fault / debug code
+	movw $0x1C00+'P', %ax
+	call _iv_regdump
 	# stack:
 	# Hex,Item
 	# +34 SS (would go here for CPL changes)
@@ -494,50 +475,42 @@ _ive_PF:
 	# eax = 0x0E
 	# edx = ptr (above)
 	call _iv_exhload
-	cli	# just stop
-	hlt
-
+	call _ix_totalhalt	# just stop
 	popa
 	add $4, %esp
 	iret
 _ive_X15:
 .global _ive_X15
 	pusha
-	call _iv_regdump
 	movw $0x1C00+'F', %ax
-	movw %ax, 0xC00B8082
+	call _iv_regdump
 	popa
 	iret
 _ive_MF:
 .global _ive_MF
 	pusha
-	call _iv_regdump
 	movw $0x1C00+'M', %ax
-	movw %ax, 0xC00B8082
+	call _iv_regdump
 	popa
 	iret
 _ive_AC:
 .global _ive_AC
 	pusha
-	call _iv_regdump
 	movw $0x1C00+'L', %ax
-	movw %ax, 0xC00B8082
+	call _iv_regdump
 	popa
 	iret
 _ive_MC:
 .global _ive_MC
 	pusha
-	call _iv_regdump
 	movw $0x1C00+'M', %ax
-	movw %ax, 0xC00B8082
-	cli
-	hlt
+	call _iv_regdump
+	call _ix_totalhalt
 _ive_XM:
 .global _ive_XM
 	pusha
-	call _iv_regdump
 	movw $0x1C00+'X', %ax
-	movw %ax, 0xC00B8082
+	call _iv_regdump
 	popa
 	iret
 
@@ -840,6 +813,13 @@ RETN:	ret
 
 _ix_totalhalt:	# totally halt the system. well, except if interrupts are on.
 	.global _ix_totalhalt
+	mov %eax, %ebx
+	call puthex32
+	mov $_lc_totalhalt, %esi
+	call ixcom_printz
+	mov 0(%esp), %ebx
+	call puthex32
+	cli
 1:	hlt
 	jmp 1b
 
@@ -955,4 +935,3 @@ idt_int _iv_irq13, KSEG
 idt_int _iv_irq14, KSEG
 idt_int _iv_irq15, KSEG	# 0x2f
 idt_int _iv_nothing, KSEG
-

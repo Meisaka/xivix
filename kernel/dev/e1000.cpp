@@ -224,8 +224,8 @@ e1000::e1000(pci::PCIBlock &pcib) {
 	uint64_t piobase = (pcib.bar[0] & 0xfffffff0);
 	void * vmbase = (void*)(pcib.bar[0] & 0xfffffff0);
 	viobase = (volatile uint32_t *)vmbase;
-	mem::request(pcib.barsz[0], vmbase, piobase, mem::RQ_HINT | mem::RQ_RW);
-	descbase = mem::alloc_pages(1, 0);
+	mem::vmm_request(pcib.barsz[0], vmbase, piobase, mem::RQ_HINT | mem::RQ_RW);
+	descbase = mem::vmm_request(1 * mem::PAGE_SIZE, nullptr, 0, mem::RQ_RW | mem::RQ_ALLOC);
 	DESC_PAGE *descpage = (DESC_PAGE*)descbase;
 	rdbuf = mem::translate_page((uint32_t)descpage->recv);
 	txbuf = mem::translate_page((uint32_t)descpage->trmt);
@@ -313,7 +313,8 @@ void e1000::remove() {
 }
 void e1000::transmit(void * buf, size_t sz) {
 	uint32_t fint = _ixa_xchg(&lastint, 0);
-	if(fint) xiv::printf("e1000: ICR: %x\n", fint);
+	(void)fint;
+	//if(fint) xiv::printf("e1000: ICR: %x\n", fint);
 	if(sz < 64) {
 		xiv::print("e1000: TX: Frame too small\n");
 		return;
@@ -322,7 +323,7 @@ void e1000::transmit(void * buf, size_t sz) {
 	TRMT_DATA *txd = (TRMT_DATA*)&descpage->trmt[txtail];
 	descpage->trmt[txtail].v[1] = 0;
 	txd->address = mem::translate_page((uintptr_t)buf);
-	xiv::printf("e1000: TX[%x] PG: %x\n", txtail, (uintptr_t)buf);
+	//xiv::printf("e1000: TX[%x] PG: %x\n", txtail, (uintptr_t)buf);
 	txd->len = sz;
 	txd->dtype = 0x1;
 	txd->sta = 0;
@@ -338,4 +339,3 @@ void e1000::getmediaaddr(uint8_t *p) const {
 }
 
 }
-

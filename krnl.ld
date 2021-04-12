@@ -3,6 +3,7 @@ ENTRY(_ix_entry)
 SECTIONS {
 	_kernel_load = 1M ;
 	_kernel_start = 0xc0000000 + 1M ;
+	_vgabase = 0xc00B8000 ;
 	. = _kernel_load;
 	.text.init : AT( 1M ) {
 		*( .ixboot )
@@ -32,4 +33,3 @@ SECTIONS {
 	_kernel_end = ALIGN(4K) ;
 	_kernel_phy_end = ( _kernel_end - _kernel_start ) + _kernel_load ;
 }
-

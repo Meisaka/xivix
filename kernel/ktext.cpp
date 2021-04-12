@@ -20,6 +20,7 @@
 #include "ktext.hpp"
 #include "dev/vgatext.hpp"
 #include "dev/fbtext.hpp"
+#include "kio.hpp"
 #include <stdarg.h>
 
 namespace xiv {
@@ -29,6 +30,7 @@ VirtTerm *txtvc = nullptr;
 FramebufferText *txtfb = nullptr;
 
 void putc(char c) {
+	ixcom_putc(c);
 	if(txtout == nullptr) return;
 	switch(c) {
 	case 10:
@@ -276,4 +278,3 @@ void printf(const char *ftr, ...) {
 }
 
 }
-
