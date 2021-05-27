@@ -100,27 +100,61 @@ const char * const EXTENTCLASS[] = {
 int req_control(void (*)(void *, void *, uint32_t), void *);
 int req_allocrange(void (*)(void *, uint64_t, uint32_t), void *, uint32_t);
 
-struct trie_radix {
-	uint8_t radix[4];
+enum TRIE_TYPE : uint8_t {
+	TT_UNSET, TT_LINK, TT_LEAF,
+	TT_PREFIX,
+	TT_MASK_1,
+	TT_MASK_2,
+	TT_MASK_3,
+	TT_LIST_3,
+	TT__TRIE_TYPE // last entry
+};
+const char * const TRIECLASS[] = {
+	"-----","*LINK","LEAF_",
+	"PREFIX",
+	"MASK1",
+	"MASK2",
+	"MASK3",
+	"LIST3",
+};
+struct TrieRadix {
+	uint32_t radix;
 	uint8_t ref[8];
 } __attribute__((packed));
-struct trie_prefix {
+struct TriePrefix {
 	uint16_t pfx_start;
 	uint16_t pfx_end;
 	uint64_t value;
 } __attribute__((packed));
-struct trie_control {
-	uint8_t type;
+struct TrieLeaf {
+	uint32_t ref;
+	MEMEXTENT flag;
+	uint32_t length;
+} __attribute__((packed));
+struct TrieControl {
+	TRIE_TYPE type;
 	uint8_t res[3];
 	union {
-		uint8_t raw[12];
-		trie_radix radix;
-		trie_prefix prefix;
+		uint32_t raw[3];
+		TrieRadix radix;
+		TriePrefix prefix;
+		TrieLeaf leaf;
 	};
+	TrieControl& init(TRIE_TYPE t) {
+		raw[0] = 0;
+		raw[1] = 0;
+		raw[2] = 0;
+		type = t;
+		return *this;
+	}
+	const char *type_name() const {
+		if(type >= TT__TRIE_TYPE) return "???";
+		return TRIECLASS[type];
+	}
 } __attribute__((packed));
 
 struct Extent {
-	uint32_t flags;
+	MEMEXTENT flags;
 	union {
 		uint64_t base;
 		Extent *next;
@@ -149,21 +183,18 @@ public:
 	struct ExtentTableHeader {
 		ExtentTable *next;
 		uint32_t ifree;
-		uint32_t ilast;
 	};
 	static constexpr size_t max_ext =
 		(BLOCKSIZE - sizeof(ExtentTableHeader)) / sizeof(Extent);
 	static constexpr size_t max_trie =
-		(BLOCKSIZE) / sizeof(trie_control);
+		(BLOCKSIZE) / sizeof(TrieControl);
 	struct ExtentTable : ExtentTableHeader {
 		Extent extent[max_ext];
-		trie_control trie[max_trie];
+		TrieControl trie[max_trie];
 		Extent* free() { return &extent[ifree]; }
-		//Extent* last() { return &extent[ilast]; }
 		void init(ExtentTable *end) {
 			this->next = end;
 			this->ifree = 0;
-			this->ilast = 0;
 			Extent *p = this->extent;
 			uint32_t index = 0;
 			while(index <= max_ext) {
@@ -173,6 +204,14 @@ public:
 				p++;
 				index++;
 			}
+			// trie system
+			index = 0;
+			while(index <= max_trie) {
+				TrieControl &t = this->trie[index];
+				t.type = TT_UNSET;
+				index++;
+			}
+			this->trie[0].init(TT_MASK_2);
 		}
 	};
 	struct ExtentInterator {
@@ -190,10 +229,8 @@ public:
 			}
 			return cur->next;
 		}
-		void set_last() { cur->ilast = index; }
 		void set_free() { cur->ifree = index; }
 		bool is_free() const { return index == cur->ifree; }
-		bool is_last() const { return index == cur->ilast; }
 		bool has_next() const {
 			if(index < max_ext) {
 				return true;
@@ -277,7 +314,8 @@ public:
 		return nullptr;
 	}
 
-	void add_extent(uint64_t b, uint32_t l, uint32_t f) {
+private:
+	void add_extent(uint64_t b, uint32_t l, MEMEXTENT f) {
 		if(l == 0 || f == MX_UNSET || f >= MX_LAST) return;
 		if(f == MX_FREE) {
 			auto pfree = active->free();
@@ -302,18 +340,8 @@ public:
 		}
 	}
 
-	Extent* find_extent(uint64_t b) {
-		ExtentInterator extent_iter(*this, active);
-		for(;extent_iter.has_next(); extent_iter++) {
-			Extent *p = &*extent_iter;
-			if(p->base <= b && b < p->end()) {
-				return p;
-			}
-		}
-		return nullptr;
-	}
-
-	Extent* find_type_extent(uint32_t l, uint32_t f) {
+public:
+	Extent* find_type_extent(uint32_t l, MEMEXTENT f) {
 		ExtentInterator extent_iter(*this, active);
 		for(;extent_iter.has_next(); extent_iter++) {
 			Extent *p = &*extent_iter;
@@ -351,7 +379,157 @@ public:
 		return nullptr;
 	}
 
-	void mark_extent(uint64_t b, uint32_t l, uint32_t f) {
+	void set_trie_extent(Extent &ext) {
+		//size_t upper_mask = (size_t)0x100000000; // 32 bit only
+		uint8_t scan_start = 32;
+		TrieControl *table = begin->trie;
+		uint8_t index = 0;
+		while(scan_start > 12) {
+			TrieControl &item = table[index];
+			switch(item.type) {
+			case TT_MASK_1:
+			{
+				scan_start -= 1;
+				uint8_t test_val = (ext.base >> scan_start) & 0x1;
+				if(item.radix.ref[test_val]) {
+					index = (item.radix.ref[test_val] + index) % max_trie;
+				} else {
+					size_t k = 0;
+					for(;k < max_trie; k++) { // TODO, put this in a function
+						if(table[k].type == TT_UNSET) break;
+					}
+					if(k < max_trie) {
+						if(scan_start > 12) {
+							table[k].init(TT_LIST_3);
+							item.radix.ref[test_val] = (k - index) % max_trie;
+							index = k;
+						} else {
+							table[k].init(TT_LEAF);
+							item.radix.ref[test_val] = (k - index) % max_trie;
+						}
+					} else {
+						xiv::printf("%s: trie: no free slots\n", vmt);
+						scan_start = 0;
+					}
+				}
+				break;
+			}
+			case TT_MASK_2:
+			{
+				scan_start -= 2;
+				uint8_t test_val = (ext.base >> scan_start) & 0x3;
+				if(item.radix.ref[test_val]) {
+					index = (item.radix.ref[test_val] + index) % max_trie;
+				} else {
+					size_t k = 0;
+					for(;k < max_trie; k++) { // TODO, put this in a function
+						if(table[k].type == TT_UNSET) break;
+					}
+					if(k < max_trie) {
+						if(scan_start > 12) {
+							table[k].init(TT_MASK_3);
+							item.radix.ref[test_val] = (k - index) % max_trie;
+							index = k;
+						} else {
+							table[k].init(TT_LEAF);
+							item.radix.ref[test_val] = (k - index) % max_trie;
+						}
+					} else {
+						xiv::printf("%s: trie: no free slots\n", vmt);
+						scan_start = 0;
+					}
+				}
+				break;
+			}
+			case TT_MASK_3:
+			{
+				scan_start -= 3;
+				uint8_t test_val = (ext.base >> scan_start) & 0x7;
+				if(item.radix.ref[test_val]) {
+					index = (item.radix.ref[test_val] + index) % max_trie;
+				} else {
+					size_t k = 0;
+					for(;k < max_trie; k++) { // TODO, put this in a function
+						if(table[k].type == TT_UNSET) break;
+					}
+					if(k < max_trie) {
+						item.radix.ref[test_val] = (k - index) % max_trie;
+						index = k;
+						if(scan_start > 20) {
+							table[k].init(TT_MASK_3);
+						} else if(scan_start > 12) {
+							table[k].init(TT_MASK_1);
+						} else {
+							table[k].init(TT_LEAF);
+						}
+					} else {
+						xiv::printf("%s: trie: no free slots\n", vmt);
+						scan_start = 0;
+					}
+				}
+				break;
+			}
+			case TT_LIST_3:
+			{
+				scan_start -= 4;
+				uint8_t test_val = (ext.base >> scan_start) & 0xf;
+				uint32_t test_radix = item.radix.radix;
+				uint32_t test_free = 8;
+				uint32_t i;
+				for(i = 0; i < 8; i++, test_radix >>= 4) {
+					if(!item.radix.ref[i]) {
+						if(i < test_free) test_free = i;
+						continue;
+					}
+					if((test_radix & 0xf) == test_val) {
+						// decend the trie!
+						index = (item.radix.ref[i] + index) % max_trie;
+						break;
+					}
+				}
+				if(i == 8) {
+					if(test_free == 8) {
+						xiv::printf("%s: trie: radix full\n", vmt);
+						return;
+					}
+					item.radix.radix &= ~(0xf << (test_free * 4));
+					item.radix.radix |= test_val << (test_free * 4);
+					size_t k = 0;
+					for(;k < max_trie; k++) { // TODO, put this in a function
+						if(table[k].type == TT_UNSET) break;
+					}
+					if(k < max_trie) {
+						if(scan_start > 12) {
+							table[k].init((scan_start == 24) ? TT_MASK_3 : TT_LIST_3);
+							item.radix.ref[test_free] = (k - index) % max_trie;
+							index = k;
+						} else {
+							TrieControl &lea = table[k].init(TT_LEAF);
+							lea.leaf.flag = ext.flags;
+							lea.leaf.length = ext.length;
+							item.radix.ref[test_free] = (k - index) % max_trie;
+						}
+					} else {
+						xiv::printf("%s: trie: no free slots\n", vmt);
+						scan_start = 0;
+					}
+				}
+				break;
+			}
+
+			default:
+				scan_start = 0;
+				break;
+			}
+		}
+	}
+
+	void set_extent(uint64_t b, uint32_t l, MEMEXTENT f) {
+		Extent to_set;
+		to_set.base = b;
+		to_set.length = l;
+		to_set.flags = f;
+		set_trie_extent(to_set);
 		Extent *p;
 		p = intersect_extent(b, l);
 		// !!! important !!! this function does NOT perform bounds validation
@@ -408,41 +586,11 @@ public:
 		if(active->free()->flags != MX_FREE) find_free_extent(0);
 	}
 
-	int free(uint64_t b) {
-		Extent *p = find_extent(b);
-		if(!p) {
-			xiv::printf("%s: No such block %0lx\n", vmt, b);
-			return -1;
-		}
-		if(p->base != b) {
-			xiv::printf("%s: Mid block free\n", vmt);
-			return -1;
-		}
-		if(p->flags == MX_FREE) {
-			xiv::printf("%s: Double free\n", vmt);
-			return -1;
-		}
-		if(p->flags == MX_CONTROL) {
-			xiv::printf("%s: control block free\n", vmt);
-		}
-		p->flags = MX_FREE;
-		auto pfree = active->free();
-		if(pfree->base > p->base) { // attempt to cull the extent
-			if((pfree->flags == MX_FREE) && p->end() == pfree->base) {
-				pfree->flags = MX_UNSET;
-				active->ilast = active->ifree;
-				p->length += pfree->length;
-			}
-			pfree = p;
-		}
-		return 0;
-	}
-
 	uint64_t allocate(uint32_t l) {
 		return allocate(l, MX_ALLOC);
 	}
 
-	uint64_t allocate_res(uint32_t l, uint32_t f) {
+	uint64_t allocate_res(uint32_t l, MEMEXTENT f) {
 		uint64_t mm;
 		if(!active) {
 			return 0;
@@ -450,7 +598,7 @@ public:
 		Extent *te = find_type_extent(l, MX_PRE);
 		if(te && te->length >= l) {
 			mm = te->base;
-			mark_extent(mm, l, f);
+			set_extent(mm, l, f);
 			return mm;
 		} else {
 			xiv::printf("%s: no reserve for length %d\n", vmt, l);
@@ -458,7 +606,7 @@ public:
 		return 0;
 	}
 
-	uint64_t allocate(uint32_t l, uint32_t f) {
+	uint64_t allocate(uint32_t l, MEMEXTENT f) {
 		uint64_t mm;
 		if(!active) {
 			return 0;
@@ -483,7 +631,7 @@ public:
 		if(pfree->length >= l) {
 			mm = pfree->base;
 			xiv::printf("%s: F-Allocated: %x @ %0lx\n", vmt, l, mm);
-			mark_extent(mm, l, f);
+			set_extent(mm, l, f);
 			return mm;
 		}
 		find_free_extent(l);
@@ -491,14 +639,14 @@ public:
 		if(pfree->length >= l && pfree->flags == MX_FREE) {
 			mm = pfree->base;
 			xiv::printf("%s: L-Allocated: %x @ %0lx\n", vmt, l, mm);
-			mark_extent(mm, l, f);
+			set_extent(mm, l, f);
 			return mm;
 		}
 		find_free_extent(0); // find last free
 		if(aquire(l) == 0) {
 			mm = active->free()->base;
 			xiv::printf("%s: A-Allocated: %x @ %0lx\n", vmt, l, mm);
-			mark_extent(mm, l, f);
+			set_extent(mm, l, f);
 			find_free_extent(1);
 			return mm;
 		}
@@ -506,6 +654,92 @@ public:
 		return 0;
 	}
 
+	void debug_trie(ExtentTable *table, size_t iaddr, size_t index, size_t depth) {
+		if(depth > 32) return;
+		TrieControl &tc = table->trie[index];
+		if(tc.type != TT_UNSET) {
+			xiv::printf("TRIE:%03d %s ", index, tc.type_name());
+			const char * so_align = "              |";
+			for(size_t i = 0; i < (depth / 4); i++) xiv::putc(' ');
+			switch(tc.type) {
+			case TT_LEAF:
+			{
+				const char *eclass = "???";
+				if(tc.leaf.flag < MX_LAST) {
+					eclass = EXTENTCLASS[tc.leaf.flag];
+				}
+				xiv::printf("<%s> % 5x\n", eclass, tc.leaf.length);
+				break;
+			}
+			case TT_MASK_1:
+				depth += 1;
+				xiv::putc('\n');
+				for(size_t i = 0; i < 2; i++) {
+					if(tc.radix.ref[i]) {
+						size_t naddr = iaddr | i << (32 - depth);
+						uint8_t nindex = 0xff & (tc.radix.ref[i] + index);
+						if(naddr != iaddr) {
+							xiv::print(so_align);
+							xiv::printf("% 8x->%d\n", naddr, nindex);
+						}
+						debug_trie(table, naddr, nindex, depth);
+					}
+				}
+				depth -= 1;
+				break;
+			case TT_MASK_2:
+				depth += 2;
+				xiv::putc('\n');
+				for(size_t i = 0; i < 4; i++) {
+					if(tc.radix.ref[i]) {
+						size_t naddr = iaddr | i << (32 - depth);
+						uint8_t nindex = 0xff & (tc.radix.ref[i] + index);
+						if(naddr != iaddr) {
+							xiv::print(so_align);
+							xiv::printf("% 8x->%d\n", naddr, nindex);
+						}
+						debug_trie(table, naddr, nindex, depth);
+					}
+				}
+				depth -= 2;
+				break;
+			case TT_MASK_3:
+				depth += 3;
+				xiv::putc('\n');
+				for(size_t i = 0; i < 8; i++) {
+					if(tc.radix.ref[i]) {
+						size_t naddr = iaddr | i << (32 - depth);
+						uint8_t nindex = 0xff & (tc.radix.ref[i] + index);
+						if(naddr != iaddr) {
+							xiv::print(so_align);
+							xiv::printf("% 8x->%d\n", naddr, nindex);
+						}
+						debug_trie(table, naddr, nindex, depth);
+					}
+				}
+				depth -= 3;
+				break;
+			case TT_LIST_3:
+				depth += 4;
+				xiv::putc('\n');
+				for(size_t i = 0; i < 8; i++) {
+					if(tc.radix.ref[i]) {
+						size_t naddr = iaddr | ((0xf & (tc.radix.radix >> (4 * i))) << (32 - depth));
+						uint8_t nindex = 0xff & (tc.radix.ref[i] + index);
+						if(naddr != iaddr) {
+							xiv::print(so_align);
+							xiv::printf("% 8x->%d\n", naddr, nindex);
+						}
+						debug_trie(table, naddr, nindex, depth);
+					}
+				}
+				depth -= 4;
+				break;
+			default:
+				break;
+			}
+		}
+	}
 	void debug_table() {
 		uint32_t addrc = 0;
 		uint32_t last_show = 0;
@@ -516,20 +750,19 @@ public:
 		for(;extent_iter.has_next(); extent_iter++) {
 			if(last_table != extent_iter.cur) {
 				last_table = extent_iter.cur;
-				if((vis & 3) != 3) {
+				if((vis & 1) != 1) {
 					xiv::printf("%s: missing:", vmt);
 					if(!(vis & 1)) xiv::printf(" FREE");
-					if(!(vis & 2)) xiv::printf(" LAST");
 					xiv::putc(10);
 					vis = 0;
 				}
 				xiv::printf("%s: Block: %08x/%d\n", vmt, extent_iter.cur, addrc);
+				debug_trie(extent_iter.cur, 0, 0, 0);
 			}
 			Extent *p = &*extent_iter;
 			if((extent_iter.index < 3) || (extent_iter.index > (max_ext - 3))
 				|| (*prev != *p) // the index < 0 is *required* to void null deref here
-				|| extent_iter.is_free()
-				|| extent_iter.is_last() ) {
+				|| extent_iter.is_free() ) {
 				prev = p;
 				if((last_show + 1) < addrc) {
 					xiv::printf(":%03d .. %03d\n", last_show + 1, addrc - 1);
@@ -545,10 +778,6 @@ public:
 				if(extent_iter.is_free()) {
 					xiv::print("<-FREE");
 					vis |= 1;
-				}
-				if(extent_iter.is_last()) {
-					xiv::print("<-LAST");
-					vis |= 2;
 				}
 				xiv::putc(10);
 			}
@@ -567,6 +796,7 @@ public:
 			case MX_FREE: n_free++; break;
 			case MX_ALLOC: n_alloc++; break;
 			case MX_EMPTY: n_empty++; break;
+			default: break;
 			}
 			index++;
 		}
@@ -600,7 +830,7 @@ void load_memmap() {
 		}
 		if(mm->type != 2) {
 			printf("%x pages at %x\n", mm->size >> 12, mm->start);
-			phymm.add_extent(mm->start, mm->size >> 12, (mm->type == 1) ? MX_FREE : MX_FIXED);
+			phymm.set_extent(mm->start, mm->size >> 12, (mm->type == 1) ? MX_FREE : MX_FIXED);
 		}
 	}
 	print("done.\n");
@@ -633,14 +863,14 @@ void initialize() {
 	// load the physical memory map into the blocks table
 	load_memmap();
 	// the blocks the kernel is sitting in are definitely being used
-	phymm.mark_extent(kp_start, k_pages, MX_FIXED);
+	phymm.set_extent(kp_start, k_pages, MX_FIXED);
 	phymm.allocate(8); // the page directories and indicies
 	phymm.allocate(2); // the PMM and VMM control blocks
 	//memalloc.init(blockptr); blockptr += PAGE_SIZE;
 	vmm.init(blockptr); blockptr += PAGE_SIZE;
-	vmm.add_extent(0xc0000000, 0x3fff0, MX_FREE); // the top 1GB is all usable by the kernel
-	vmm.mark_extent(0xc0000000, 0x100, MX_FIXED); // legacy memory area
-	vmm.mark_extent(kv_start, k_pages, MX_FIXED); // kernel
+	vmm.set_extent(0xc0000000, 0x3fff0, MX_FREE); // the top 1GB is all usable by the kernel
+	vmm.set_extent(0xc0000000, 0x100, MX_FIXED); // legacy memory area
+	vmm.set_extent(kv_start, k_pages, MX_FIXED); // kernel
 	vmm.allocate(8);
 	vmm.allocate(2);
 
@@ -787,7 +1017,7 @@ void * vmm_request(size_t sz, void* hint, uint64_t phys, uint32_t flag) {
 		if(bega < 0x10000) { // don't allow allocations at <64k VM
 			return nullptr;
 		}
-		vmm.mark_extent(bega, (enda - bega) / PAGE_SIZE, ((flag & RQ_ALLOC) == 0) ? MX_IO : MX_ALLOC);
+		vmm.set_extent(bega, (enda - bega) / PAGE_SIZE, ((flag & RQ_ALLOC) == 0) ? MX_IO : MX_ALLOC);
 	} else {
 		size_t pgc = (sz & ~(PAGE_SIZE-1)) / PAGE_SIZE;
 		if(sz & (PAGE_SIZE-1)) pgc++;
