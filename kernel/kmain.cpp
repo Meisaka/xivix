@@ -462,7 +462,6 @@ extern "C" void _kernel_main() {
 	printf("Command loop start\n");
 	cmd = (char*)kmalloc(cmdlen);
 
-	bool busy = false;
 	nxf = _ivix_int_n + 40;
 
 	while(true) {
@@ -477,16 +476,11 @@ extern "C" void _kernel_main() {
 		if(psys->waiting()) {
 			psys->handle();
 			k++;
-			busy = true;
 		}
 		if(kb1->has_key()) {
-			busy = true;
 			handle_key();
 		}
-		if(!busy) {
-			_ix_halt();
-		}
-		busy = false;
+		_ix_halt();
 	}
 	_ix_totalhalt();
 }

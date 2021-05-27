@@ -432,11 +432,11 @@ void PS2::handle() {
 				port[i].type = PS2TYPE::KEYBOARD;
 				break;
 			default:
-				xiv::printf("PS2: port %d init unknown - querying\n", i+1);
-				port[i].type = PS2TYPE::QUERY;
-				port[i].status = PS2ST::IDENT;
 				if(ps2_can_write()) {
-				port_send(0xF2, i); // ident
+					xiv::printf("PS2: port %d init unknown - querying\n", i+1);
+					port[i].type = PS2TYPE::QUERY;
+					port[i].status = PS2ST::IDENT;
+					port_send(0xF2, i); // ident
 				}
 				break;
 			}
@@ -475,7 +475,7 @@ void PS2::handle() {
 				break;
 			case PS2ST::IDENT2:
 				xiv::printf("PS2: port %d IDENT2 timeout\n", i+1);
-				port[i].nextcheck = _ivix_int_n + 100;
+				port[i].nextcheck = _ivix_int_n + 20;
 				port[i].status = PS2ST::LOST;
 				break;
 			default:
@@ -488,12 +488,12 @@ void PS2::port_enable(uint32_t u, bool e) {
 	if(u > 1) return;
 	if(e) {
 		if(port[u].status == PS2ST::DISABLE) {
-			xiv::printf("PS2: port %d enabled\n", u+1);		
+			xiv::printf("PS2: port %d enabled\n", u+1);
 			port[u].status = PS2ST::LOST;
 		}
 	} else {
 		port[u].status = PS2ST::DISABLE;
-		xiv::printf("PS2: port %d disabled\n", u+1);		
+		xiv::printf("PS2: port %d disabled\n", u+1);
 	}
 }
 uint32_t PS2::port_query(uint32_t p) {
@@ -533,4 +533,3 @@ void PS2::port_send(uint8_t km, uint32_t ex) {
 }
 
 } // hw
-
