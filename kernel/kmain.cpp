@@ -1,21 +1,10 @@
 /* ***
  * kmain.cpp - C++ entry point for the kernel
- * Copyright (C) 2014-2015  Meisaka Yukara
- *
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2
- * as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License along
- * with this program; if not, write to the Free Software Foundation, Inc.,
- *     51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+ * Copyright (c) 2014-2021  Meisaka Yukara
+ * See LICENSE for full details
+ * e6af70ca
  */
+
 #include "ktypes.hpp"
 #include "kio.hpp"
 #include "ktext.hpp"
@@ -127,10 +116,13 @@ uint8_t mapchar(uint32_t k, uint32_t mods) {
 	return 0;
 }
 
-int memeq(const uint8_t * a, const uint8_t * b, size_t l) {
+int memeq(const void * ptra, const void * ptrb, size_t l) {
 	int equ = 0;
+	const uint8_t *a, *b;
+	a = (const uint8_t *)ptra;
+	b = (const uint8_t *)ptrb;
 	for(; l; l--) {
-		equ |= (*a) - (*b);
+		equ |= (*a) ^ (*b);
 		a++; b++;
 	}
 	return equ;
@@ -204,52 +196,6 @@ int cmdx = 0, cmdl = 0;
 char *cmd;
 uint32_t nxf;
 bool flk = false;
-uint8_t *tei = 0;
-uint32_t tei_check;
-
-void send_via_udp(const char * msg) {
-	if(!hw::ethdev) return;
-	int q = 42;
-	int udp_length;
-	uint32_t udp_check = tei_check;
-	for(udp_length = 0; msg[udp_length] && q < 1400; udp_length++, q++) {
-		uint8_t c = (uint8_t)msg[udp_length];
-		tei[q] = c;
-		if(udp_length & 1) {
-			udp_check += c;
-		} else {
-			udp_check += c << 8;
-		}
-	}
-	udp_length += 8;
-	uint16_t ip_length = 20 + (uint16_t)udp_length;
-	if(ip_length < 50) ip_length = 50;
-	tei[16] = (uint8_t)(ip_length >> 8);
-	tei[17] = (uint8_t)ip_length;
-	// finish the udp checksum
-	udp_check += udp_length + udp_length; // psudo header + to be written
-	while(udp_check & 0xffff0000u) { // the ones complement thing
-		udp_check = (udp_check & 0xfffful) + (udp_check >> 16);
-	}
-	if(udp_check != 0xffff) udp_check = ~udp_check; // invert it
-	// recalculate the IP checksum
-	uint32_t ip_check = 0;
-	for(q = 14; q < 34; q += 2) {
-		if(q == 24) continue;
-		ip_check += (tei[q] << 8) | tei[q + 1];
-	}
-	while(ip_check & 0xffff0000u) {
-		ip_check = (ip_check & 0xfffful) + (ip_check >> 16);
-	}
-	ip_check = ~ip_check;
-	tei[24] = (uint8_t)(ip_check >> 8);
-	tei[25] = (uint8_t)ip_check;
-	tei[38] = (uint8_t)(udp_length >> 8);
-	tei[39] = (uint8_t)udp_length;
-	tei[40] = (uint8_t)(udp_check >> 8);
-	tei[41] = (uint8_t)udp_check;
-	hw::ethdev->transmit(tei, 14+ip_length);
-}
 
 void handle_key() {
 	uint32_t k = kb1->pop_key();

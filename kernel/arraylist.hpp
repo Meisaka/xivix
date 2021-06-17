@@ -1,3 +1,9 @@
+/* ***
+ * Copyright (c) 2021  Meisaka Yukara
+ * See LICENSE for full details
+ * e6af70ca
+ */
+
 #ifndef ARRAYLIST_HAI
 #define ARRAYLIST_HAI
 
@@ -9,6 +15,7 @@ class ArrayList {
 		ArrayUnit *next;
 		T first;
 	};
+public:
 	constexpr static uint32_t blockent = (BLOCKSIZE - sizeof(ArrayUnit)) / sizeof(T);
 	struct Iterator {
 		ArrayUnit *block;

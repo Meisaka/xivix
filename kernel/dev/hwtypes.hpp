@@ -1,3 +1,8 @@
+/* ***
+ * Copyright (c) 2014-2021  Meisaka Yukara
+ * See LICENSE for full details
+ * e6af70ca
+ */
 #ifndef HWTYPES_HAI
 #define HWTYPES_HAI
 

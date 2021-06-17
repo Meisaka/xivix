@@ -1,20 +1,8 @@
 /* ***
  * i686/ixkm.s - Initialization and main entry for the kernel
- * Copyright (C) 2014-2017  Meisaka Yukara
- *
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2
- * as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License along
- * with this program; if not, write to the Free Software Foundation, Inc.,
- *     51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+ * Copyright (c) 2014-2021  Meisaka Yukara
+ * See LICENSE for full details
+ * e6af70ca
  */
 
 .section .initstack
@@ -29,6 +17,10 @@ ixstk:
 .set PIC1_DAT, 0x21
 .set PIC2_CMD, 0xA0
 .set PIC2_DAT, 0xA1
+.set PIT_CH0, 0x40
+.set PIT_CH1, 0x41
+.set PIT_CH2, 0x42
+.set PIT_CMD, 0x43
 
 .macro idt_trap offs=0, sel=0, dpl=0
 .int \offs
@@ -55,8 +47,7 @@ _ivix_gdt_ptr:
 
 _ivix_dump_n:
 .int 0
-_ivix_int_n:
-.global _ivix_int_n
+_ivix_int_n: .global _ivix_int_n
 .int 0
 
 .section .ixboot,"ax"
@@ -137,7 +128,7 @@ _kernel_entry:
 
 	sub $0xc, %esp		# align the stack
 	call _ix_construct	# call ctors
-	call _ix_ecentry    # start the comm port
+	call _ix_ecentry	# start the comm port
 	sti			# interupts on
 	call _kernel_main	# jump to C/C++
 	jmp _ix_halt		# idle loop if we get here
@@ -531,8 +522,6 @@ _iv_exhload:
 
 _iv_irqload:
 	mov %esp, %edx
-	push %eax
-	call _iv_add_n
 	mov (%esp), %eax
 	lea ivix_interrupt(,%eax,8), %esi
 	mov (%esi), %ebx
@@ -553,82 +542,83 @@ _iv_irqload:
 _iv_irq0:
 .global _iv_irq0
 	pusha
-	mov $0, %eax
+	push $0
+	call _iv_add_n
 	jmp _iv_irqload
 _iv_irq1:
 .global _iv_irq1
 	pusha
-	mov $1, %eax
+	push $1
 	jmp _iv_irqload
 _iv_irq2:
 .global _iv_irq2
 	pusha
-	mov $2, %eax
+	push $2
 	jmp _iv_irqload
 _iv_irq3:
 .global _iv_irq3
 	pusha
-	mov $3, %eax
+	push $3
 	jmp _iv_irqload
 _iv_irq4:
 .global _iv_irq4
 	pusha
-	mov $4, %eax
+	push $4
 	jmp _iv_irqload
 _iv_irq5:
 .global _iv_irq5
 	pusha
-	mov $5, %eax
+	push $5
 	jmp _iv_irqload
 _iv_irq6:
 .global _iv_irq6
 	pusha
-	mov $6, %eax
+	push $6
 	jmp _iv_irqload
 _iv_irq7:
 .global _iv_irq7
 	pusha
-	mov $7, %eax
+	push $7
 	jmp _iv_irqload
 _iv_irq8:
 .global _iv_irq8
 	pusha
-	mov $8, %eax
+	push $8
 	jmp _iv_irqload
 _iv_irq9:
 .global _iv_irq9
 	pusha
-	mov $9, %eax
+	push $9
 	jmp _iv_irqload
 _iv_irq10:
 .global _iv_irq10
 	pusha
-	mov $10, %eax
+	push $10
 	jmp _iv_irqload
 _iv_irq11:
 .global _iv_irq11
 	pusha
-	mov $11, %eax
+	push $11
 	jmp _iv_irqload
 _iv_irq12:
 .global _iv_irq12
 	pusha
-	mov $12, %eax
+	push $12
 	jmp _iv_irqload
 _iv_irq13:
 .global _iv_irq13
 	pusha
-	mov $13, %eax
+	push $13
 	jmp _iv_irqload
 _iv_irq14:
 .global _iv_irq14
 	pusha
-	mov $14, %eax
+	push $14
 	jmp _iv_irqload
 _iv_irq15:
 .global _iv_irq15
 	pusha
-	mov $15, %eax
+	push $15
 	jmp _iv_irqload
 _iv_irq_eoi:
 	cmp $8, %al
@@ -638,10 +628,7 @@ _iv_irq_eoi:
 1:	out %al, $PIC1_CMD
 	ret
 _iv_add_n:
-	movl $_ivix_int_n, %edx
-	movl 0(%edx), %eax
-	add $1, %eax
-	movl %eax, _ivix_int_n
+	incl _ivix_int_n
 	ret
 _iv_nothing:
 .global _iv_nothing
@@ -700,6 +687,25 @@ _ix_inl:
 	mov 4(%esp), %edx
 	xor %eax, %eax
 	inl %dx, %eax
+	ret
+
+_ix_ldnw:
+	.global _ix_ldnw
+	.type _ix_ldnw,@function
+	movw 0(%ecx), %ax
+	xchg %ah,%al
+	ret
+
+_ix_bswapw:
+	.global _ix_bswapw
+	.type _ix_bswapw,@function
+	xchg %ah,%al
+	ret
+
+_ix_bswapi:
+	.global _ix_bswapi
+	.type _ix_bswapi,@function
+	bswap %eax
 	ret
 
 _ixa_inc:
@@ -787,7 +793,23 @@ _ix_construct:
 	jne 1b
 	ret
 
-_ix_initpic:	# setup the PICs
+_ix_initpic:
+	# also setup the PIT, because why not
+	# byte: ccaa ooob
+	# cc = channel 0-2 or 3 readback
+	# aa = access: 0 latch, lo, hi, 3 lo/hi
+	# ooo= opmode: int on term, hw retrig, rate gen, sqwave
+	#   "       ": soft trig st, hw trig st, rate gen, sqwave
+	# b  = 0=bin, 1=bcd (yuck)
+	mov $0x14, %al # chan 0, lo, rate gen
+	out %al, $PIT_CMD
+	mov $0xa9, %al
+	out %al, $PIT_CH0
+	mov $0x24, %al
+	out %al, $PIT_CMD
+	mov $0x04, %al
+	out %al, $PIT_CH0
+	# setup the PICs
 	mov $0x11, %al
 	out %al, $PIC1_CMD	# init the PICs
 	out %al, $PIC2_CMD
