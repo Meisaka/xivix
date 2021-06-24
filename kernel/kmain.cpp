@@ -197,6 +197,7 @@ char *cmd;
 uint32_t nxf;
 bool flk = false;
 
+net::sockaddr test_sock { 0, 0x0100, 0xffffffff };
 void handle_key() {
 	uint32_t k = kb1->pop_key();
 	uint8_t ch = mapchar(k, kb1->mods);
@@ -242,7 +243,8 @@ void handle_key() {
 				mem::debug(3);
 				break;
 			case 'w':
-				if(hw::ethdev) send_via_udp("Xivix network test message\n");
+				if(hw::ethdev)
+					net::send_string_udp(9001, &test_sock, "Xivix network test message\n");
 				else xiv::printf("No network dev\n");
 				break;
 			case 'h':
@@ -274,9 +276,15 @@ void handle_key() {
 			case 'v':
 				mem::debug(2);
 				break;
+			case 'r':
+				xiv::printf("Random: %x\n", ixa4random());
+				break;
 			}
-		} else if(cmdx == 6) {
-			if(memeq((const uint8_t*)cmdx, (const uint8_t*)"/debug", 6) == 0) {
+		} else if(cmdx >= 3) {
+			if(!memeq(cmd, "arp", 3)) net::debug_arp();
+			if(!memeq(cmd, "pkt", 3)) net::debug_packet();
+			if(!memeq(cmd, "eth", 3)) hw::ethdev->debug_cmd(cmd + 3, cmdx - 3);
+			if((cmdx == 6) && (memeq(cmd, "/debug", 6) == 0)) {
 				mem::debug(2);
 			}
 		}
@@ -297,12 +305,13 @@ extern "C" void _kernel_main() {
 	const char *border_str = "**************************************";
 	printf("%s%s\n xivix Text mode hello\n%s%s\n",border_str,border_str,border_str,border_str);
 	VirtTerm lvt;
-	lvt.width = 240;
+	lvt.width = 200;
 	lvt.height = 96;
 	lvt.buffer = static_vt_buffer;
 	lvt.reset();
 	//xiv::txtout = svt = &lvt;
 	mem::initialize();
+	Crypto::Init();
 	// Dynamic VTerm
 	//svt = new VirtTerm(240, 128);
 	//xiv::txtout = svt;
@@ -316,7 +325,7 @@ extern "C" void _kernel_main() {
 		uint32_t vidl = vidinfo->x_res * vidinfo->y_res;
 		printf("Display clear\n");
 		for(uint32_t y = 0; y < vidl; y++) {
-			vid[y] = 0x002222;
+			vid[y] = 0x00040a;
 		}
 		printf("Video info: %x %dx%d : %d @%x\nMModel: %x\n",
 				vidinfo->mode_attrib,
@@ -359,65 +368,27 @@ extern "C" void _kernel_main() {
 
 	if(vidinfo->phys_base) fbt->render_vc(*svt);
 
-	printf("Setup packet buffer\n");
-	tei = (uint8_t*)kmalloc(2048);
-	if(hw::ethdev) {
-		//hw::ethdev->init();
-		int q = 0;
-		tei[0] = 0x00; tei[1] = 0xc; tei[2] = 0x29;
-		tei[3] = 0x4e; tei[4] = 0x51; tei[5] = 0x2b;
-		q += 6;
-		hw::ethdev->getmediaaddr(&tei[q]);
-		q += 6;
-		tei[q++] = 0x08;
-		tei[q++] = 0x00;
-		tei[q++] = 0x45;
-		tei[q++] = 0x00;
-		q += 2; // IP header + payload length, to be filled later
-		tei[q++] = 0x00; // Ident
-		tei[q++] = 0x00;
-		tei[q++] = 0x00; // flags
-		tei[q++] = 0x00; // frag
-		tei[q++] = 0x08; // TTL
-		tei[q++] = 17; // Proto
-		q += 2; // checksum, to be computed
-		tei[q++] = 192; // Src
-		tei[q++] = 168;
-		tei[q++] = 12;
-		tei[q++] = 59;
-		tei[q++] = 192; // Dst
-		tei[q++] = 168;
-		tei[q++] = 12;
-		tei[q++] = 12;
-		tei[q++] = 0xc0;
-		tei[q++] = 0xcc;
-		tei[q++] = 0x80;
-		tei[q++] = 0x00;
-		// length and final checksum computed later
-		// compute psudo header initial checksum
-		tei_check = tei[23];
-		tei_check += (tei[26] << 8) | tei[27];
-		tei_check += (tei[28] << 8) | tei[29];
-		tei_check += (tei[30] << 8) | tei[31];
-		tei_check += (tei[32] << 8) | tei[33];
-		tei_check += (tei[34] << 8) | tei[35];
-		tei_check += (tei[36] << 8) | tei[37];
-		send_via_udp("HELLO WORLz\n");
-	}
+	net::init();
+
+	mem::load_acpi(); // TODO: move this to directly after mem::initialize
 
 	printf("Command loop start\n");
 	cmd = (char*)kmalloc(cmdlen);
 
-	nxf = _ivix_int_n + 40;
+	nxf = _ivix_int_n + 40; // TODO proper Timers!
 
 	while(true) {
 		if(_ivix_int_n > nxf) {
-			nxf = _ivix_int_n + 10;
+			nxf = _ivix_int_n + 250;
 			flk =! flk;
 			if(fbt) {
 				fbt->putat(svt->getcol(), svt->getrow(), flk?'_':' ');
 			}
 		}
+		// these run periodic tasks, but all have different names
+		// owo
+		hw::ethdev->processqueues();
+		net::runsched();
 		psys->handle();
 		if(psys->waiting()) {
 			psys->handle();

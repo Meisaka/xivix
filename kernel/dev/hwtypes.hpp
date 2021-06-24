@@ -7,6 +7,7 @@
 #define HWTYPES_HAI
 
 #include "ktypes.hpp"
+#include "net/packet.hpp"
 
 namespace hw {
 
@@ -22,9 +23,12 @@ struct Port {
 	virtual void port_send(uint8_t c) = 0;
 };
 struct NetworkMAC : public Hardware {
-	virtual void transmit(void *, size_t) = 0;
-	virtual void addreceive(void *, size_t) = 0;
+	virtual void transmit(Ref<net::Packet>) = 0;
+	virtual void addreceive(Ref<net::Packet>) = 0;
 	virtual void getmediaaddr(uint8_t *) const = 0;
+	virtual void processqueues() {};
+	virtual void debug_junk() {};
+	virtual void debug_cmd(void *, uint32_t) {};
 };
 
 struct MultiPortClient;

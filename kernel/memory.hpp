@@ -111,9 +111,12 @@ enum REQUEST_FLAGS : uint32_t {
 	RQ_ALLOC = 0x4,
 	RQ_EXEC = 0x8,
 	RQ_LARGE = 0x80,
+	RQ_WCD = 0x400,
+	RQ_RCD = 0x800,
 };
 
 void initialize();
+void load_acpi();
 void debug(int);
 uint64_t translate_page(uintptr_t t);
 //void map_page(phyaddr_t, uintptr_t, uint32_t);

@@ -11,6 +11,26 @@
 
 extern "C" void _ix_loadcr3(uint32_t);
 
+namespace acpi { // we'll just put this here for now :>
+
+struct RSDPDescriptor1 {
+	char sig[8];
+	uint8_t checksum;
+	char oem_id[6];
+	uint8_t revision;
+	uint32_t rsdt_phyaddr;
+} __attribute__((packed));
+
+struct RSDPDescriptor12 {
+	RSDPDescriptor1 v1;
+	uint32_t length;
+	uint64_t xsdt_phyaddr;
+	uint8_t checksum;
+	uint8_t resv[3];
+} __attribute__((packed));
+
+} // namespace acpi
+
 namespace mem {
 
 enum PageFlags : uint64_t {
@@ -18,7 +38,7 @@ enum PageFlags : uint64_t {
 	Present = 1,
 	Writable = 1<<1,
 	Usermode = 1<<2,
-	Writethrough = 1<<3,
+	WriteThrough = 1<<3,
 	CacheDisable = 1<<4,
 	Accessed = 1<<5,
 	Dirty = 1<<6,
@@ -400,7 +420,7 @@ public:
 							item.radix.ref[test_val] = (k - index) % max_trie;
 						}
 					} else {
-						xiv::printf("%s: trie: no free slots\n", vmt);
+						// FIXME xiv::printf("%s: trie: no free slots\n", vmt);
 						scan_start = 0;
 					}
 				}
@@ -455,7 +475,7 @@ public:
 							table[k].init(TT_LEAF);
 						}
 					} else {
-						xiv::printf("%s: trie: no free slots\n", vmt);
+						// FIXME xiv::printf("%s: trie: no free slots\n", vmt);
 						scan_start = 0;
 					}
 				}
@@ -481,7 +501,7 @@ public:
 				}
 				if(i == 8) {
 					if(test_free == 8) {
-						xiv::printf("%s: trie: radix full\n", vmt);
+						// FIXME xiv::printf("%s: trie: radix full\n", vmt);
 						return;
 					}
 					item.radix.radix &= ~(0xf << (test_free * 4));
@@ -502,7 +522,7 @@ public:
 							item.radix.ref[test_free] = (k - index) % max_trie;
 						}
 					} else {
-						xiv::printf("%s: trie: no free slots\n", vmt);
+						// FIXME xiv::printf("%s: trie: no free slots\n", vmt);
 						scan_start = 0;
 					}
 				}
@@ -622,7 +642,7 @@ public:
 		Extent *pfree = active->free();
 		if(pfree->length >= l) {
 			mm = pfree->base;
-			xiv::printf("%s: F-Allocated: %x @ %0lx\n", vmt, l, mm);
+			//xiv::printf("%s: F-Allocated: %x @ %0lx\n", vmt, l, mm);
 			set_extent(mm, l, f);
 			return mm;
 		}
@@ -806,6 +826,67 @@ static uint32_t tablefreeblocks;
 static uint32_t tablefreelock;
 
 size_t const phyptr = ((&_kernel_start) - (&_kernel_load));
+
+const acpi::RSDPDescriptor12 *rsdpd = nullptr;
+
+void rsdp_validate(const uint32_t * where) {
+	using namespace acpi;
+	const uint8_t *ckb = (const uint8_t *)where;
+	uint32_t check = 0;
+	for(size_t i = 0; i < 20; i++) {
+		check += ckb[i];
+	}
+	if(check & 0xff) return; // invalid
+	const RSDPDescriptor12 *d = (const RSDPDescriptor12 *)where;
+	if(d->v1.revision == 0) { // version 1.0!
+		if(!rsdpd) {
+			rsdpd = d; // idk, maybe accept it
+		}
+	} else if(d->v1.revision == 2) {
+		check = 0;
+		for(size_t i = 20; i < 36; i++) {
+			check += ckb[i];
+		}
+		if(check & 0xff) return; // invalid v2
+		rsdpd = d; // always accept
+	}
+}
+void load_acpi() {
+	using namespace xiv;
+	print("loading tables...\n");
+	const uint8_t *sysbase = (const uint8_t*)phyptr;
+	// magic segment pointer should be at 0x40e, convert it and start there
+	const uint32_t *ebda = (const uint32_t*)(sysbase + ((*(const uint16_t*)(sysbase + 0x40e)) << 4));
+	printf("ACPI: seg:%x\n", ebda);
+	const uint32_t rsd_ptr_[] = { 0x20445352, 0x20525450 }; // text to look for
+	for(size_t i = 0; i < 64; i++) { // scan first 1KB of that
+		if(ebda[0] == rsd_ptr_[0] && ebda[1] == rsd_ptr_[1]) {
+			printf("ACPI: hinted RSDP: %x\n", ebda);
+			rsdp_validate(ebda);
+		}
+		ebda += 4; // skip ahead every 16 bytes (the enforced alignment)
+	}
+	ebda = (const uint32_t*)(sysbase + 0xe0000);
+	for(size_t i = 0; i < 0x2000; i++) { // next scan 0xE0000 - 0xFFFFF
+		if(ebda[0] == rsd_ptr_[0] && ebda[1] == rsd_ptr_[1]) {
+			printf("ACPI: possible RSDP: %x\n", ebda);
+			rsdp_validate(ebda);
+		}
+		ebda += 4; // again, every 16 bytes
+	}
+	if(rsdpd == nullptr) {
+		print("ACPI: no valid tables found\n");
+		return;
+	}
+	if(!rsdpd->v1.revision) {
+		print("ACPI: version 1 tables found, but currently unsupported!\n");
+		return;
+		//uint64_t phy = rsdpd->v1.rsdt_phyaddr;
+	}
+	uint64_t phy = phy = rsdpd->xsdt_phyaddr;
+	printf("ACPI: version %x table at v_%08x -> p_%lx\n",
+			rsdpd->v1.revision, rsdpd, phy);
+}
 
 void load_memmap() {
 	using namespace xiv;
@@ -997,6 +1078,8 @@ void * vmm_request(size_t sz, void* hint, uint64_t phys, uint32_t flag) {
 	uintptr_t bega, enda;
 	uintptr_t pg_size = PAGE_SIZE;
 	if(flag & RQ_RW) mapflag |= Writable;
+	if(flag & RQ_RCD) mapflag |= CacheDisable;
+	if(flag & RQ_WCD) mapflag |= WriteThrough;
 	if(flag & RQ_LARGE) {
 		mapflag |= Large;
 		pg_size = PAGE_SIZE_LARGE;
@@ -1013,16 +1096,16 @@ void * vmm_request(size_t sz, void* hint, uint64_t phys, uint32_t flag) {
 	} else {
 		size_t pgc = (sz & ~(PAGE_SIZE-1)) / PAGE_SIZE;
 		if(sz & (PAGE_SIZE-1)) pgc++;
-		bega = vmm.allocate(pgc);
+		bega = vmm.allocate(pgc, ((flag & RQ_ALLOC) == 0) ? MX_IO : MX_ALLOC);
 		enda = bega + pgc * PAGE_SIZE;
 		if(enda < bega) return nullptr;
 	}
 	xiv::printf("vmm_request: vaddr: %0x-%0x\n", bega, enda);
 	hint = (void*)bega;
-	if(!(flag & RQ_LARGE)){
+	if(!(flag & RQ_LARGE)) {
 		size_t pgc = (enda - bega) / PAGE_SIZE;
 		size_t pgsr = count_page_structs(bega, pgc);
-		xiv::printf("vmm_request: struct requirement: %0x-%0x %d/%d\n", bega, enda, pgsr, pgc);
+		//XXX xiv::printf("vmm_request: struct requirement: %0x-%0x %d/%d\n", bega, enda, pgsr, pgc);
 		if(pgsr) {
 			Extent *preext = vmm.find_type_extent(1, MX_PRE);
 			if(preext == nullptr) {

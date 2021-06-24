@@ -71,7 +71,7 @@ make/%.o: kernel/%.c Makefile
 make/%.o: kernel/%.cpp Makefile
 	@echo "|C++    | $<"; $(cxx) -c $< -o $@ $(CXXFLAGS)
 
-kernel.elf: Makefile krnl.ld $(KOBJ) mf
+kernel.elf: Makefile krnl.ld $(KOBJ)
 	@echo "[LINK   ] kernel.elf"; $(cxx) -T krnl.ld -o kernel.elf $(KLINKFLAGS) $(KOBJ) -lgcc
 
 kernel.img: kernel.elf
