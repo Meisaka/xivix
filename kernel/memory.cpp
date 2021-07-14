@@ -883,7 +883,8 @@ void load_acpi() {
 		return;
 		//uint64_t phy = rsdpd->v1.rsdt_phyaddr;
 	}
-	uint64_t phy = phy = rsdpd->xsdt_phyaddr;
+	uint64_t phy = 0;
+	phy = rsdpd->xsdt_phyaddr;
 	printf("ACPI: version %x table at v_%08x -> p_%lx\n",
 			rsdpd->v1.revision, rsdpd, phy);
 }
@@ -999,19 +1000,19 @@ size_t count_page_structs(uintptr_t t, size_t npg) {
 	size_t res = (efs_d - ofs_d) + (efs_dp - ofs_dp);
 	PageDirIndex *pdi = nullptr;
 	PageTable *ptptr = nullptr;
-	xiv::printf("CPS: lookup: %02x @ %08x %01x:%03x:%03x > ", npg, t & ~0x1ff, ofs_dp, ofs_d, ofs_t);
+	// XXX xiv::printf("CPS: lookup: %02x @ %08x %01x:%03x:%03x > ", npg, t & ~0x1ff, ofs_dp, ofs_d, ofs_t);
 	pdi = pdpt->pgdir_idx[ofs_dp];
 	uint64_t lg_flags = (Present | Large);
 	if((pdpt->pgdir[ofs_dp]->entry[ofs_d] & lg_flags) == lg_flags) {
-		xiv::printf("PgDir[isMapped]\n");
+		// XXX xiv::printf("PgDir[isMapped]\n");
 		return 0;
 	} else {
-		xiv::printf("PgDir[%x]>", pdi);
+		// XXX xiv::printf("PgDir[%x]>", pdi);
 		if(pdi) {
 			ptptr = pdi->get(ofs_d);
-			xiv::printf("PgTab[%x]>", ptptr);
+			// XXX xiv::printf("PgTab[%x]>", ptptr);
 		}
-		xiv::print("\n");
+		// XXX xiv::print("\n");
 	}
 	if(!pdi) {
 		return res + 2;
@@ -1049,10 +1050,10 @@ static void map_page(phyaddr_t phy, uintptr_t t, uint64_t f) {
 			}
 			PageTable *ptptr = pdi->get(ofs_d);
 			if(!ptptr) {
-				xiv::print("map_page: add pagetable/");
+				// XXX xiv::print("map_page: add pagetable/");
 				pdi->set(ofs_d, (void*)vmm.allocate_res(1, MX_ALLOC));
 				ptptr = pdi->get(ofs_d);
-				xiv::print("zero table/");
+				// XXX xiv::print("zero table/");
 				auto *cpte = ptptr->pte;
 				for(int x = 0; x < 512; x++) {
 					cpte[x] = 0;
@@ -1063,7 +1064,7 @@ static void map_page(phyaddr_t phy, uintptr_t t, uint64_t f) {
 				//xiv::printhexx(phy.m, 64); xiv::putc(10);
 			}
 			if((tablebase & Present) == 0) {
-				xiv::print("map pagetable\n");
+				// XXX xiv::print("map pagetable\n");
 				dirptr->set(ofs_d, translate_page((uintptr_t)pdi->get(ofs_d)), Present, Writable);
 				_ix_loadcr3((uint32_t)&_ivix_phy_pdpt); // reset page tables
 			}
@@ -1100,7 +1101,7 @@ void * vmm_request(size_t sz, void* hint, uint64_t phys, uint32_t flag) {
 		enda = bega + pgc * PAGE_SIZE;
 		if(enda < bega) return nullptr;
 	}
-	xiv::printf("vmm_request: vaddr: %0x-%0x\n", bega, enda);
+	// XXX xiv::printf("vmm_request: vaddr: %0x-%0x\n", bega, enda);
 	hint = (void*)bega;
 	if(!(flag & RQ_LARGE)) {
 		size_t pgc = (enda - bega) / PAGE_SIZE;
@@ -1109,7 +1110,7 @@ void * vmm_request(size_t sz, void* hint, uint64_t phys, uint32_t flag) {
 		if(pgsr) {
 			Extent *preext = vmm.find_type_extent(1, MX_PRE);
 			if(preext == nullptr) {
-				xiv::printf("vmm_request: no prealloc exist\n");
+				// XXX xiv::printf("vmm_request: no prealloc exist\n");
 				pgsr+= 8;
 			}
 			uint64_t bu = vmm.allocate(pgsr, MX_PRE);

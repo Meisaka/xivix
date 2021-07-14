@@ -317,9 +317,9 @@ uint32_t e1000::handle_int() {
 }
 
 e1000::e1000(pci::PCIBlock &pcib) {
-	xiv::print("e1000: add device\n");
-	xiv::printf("e1000: base: %x / %x\n", pcib.bar[0], pcib.barsz[0]);
-	xiv::printf("e1000: intr: %x / %x\n", pcib.info.int_line, pcib.info.int_pin);
+	xiv::printf("e1000: add device, base: %x / %x, intr: %x / %x\n",
+		pcib.bar[0], pcib.barsz[0],
+		pcib.info.int_line, pcib.info.int_pin);
 	lastint = 0;
 	pcib.writecommand(0x117); // enable mastering on PCI
 	junk_register = 0;

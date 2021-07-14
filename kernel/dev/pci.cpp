@@ -17,7 +17,7 @@ PCI::PCI() {
 PCI::~PCI() {
 }
 
-uint32_t verblevel = 0;
+uint32_t verblevel = 1;
 
 union Multiword {
 	uint32_t w;
@@ -49,8 +49,9 @@ static const char * const PCI_CLASSES[] = {
 };
 
 static const char * get_class(uint8_t cc) {
-	if(cc == 0xff) return PCI_CLASSES[0x13];
-	if(cc > 0x12) cc = 0x12;
+	constexpr size_t num_pci_classes = sizeof(PCI_CLASSES) / sizeof(const char *);
+	if(cc == 0xff) return PCI_CLASSES[num_pci_classes - 1];
+	if(cc > (num_pci_classes - 2)) cc = num_pci_classes - 2;
 	return PCI_CLASSES[cc];
 }
 
@@ -120,7 +121,7 @@ void dev_fn_check(uint8_t bus, uint8_t dev, uint8_t fn) {
 	cdb.info.int_pin = iir.b[1];
 	cdb.info.min_grant = iir.b[2];
 	cdb.info.max_latency = iir.b[3];
-	if(verblevel >= 2) {
+	if(verblevel >= 2 || ((verblevel==1) && (dcl.h[1] != 0x0604))) {
 		xiv::printf("PCI %d/%d/%d - %x:%x ", bus, dev, fn, info.h[0], info.h[1]);
 		if(hci.b[2] & 0x80) xiv::print("mf-");
 	}
@@ -129,22 +130,22 @@ void dev_fn_check(uint8_t bus, uint8_t dev, uint8_t fn) {
 		if(verblevel >= 2) xiv::printf("bus: %x **nxt: %d\n", ex.w, ex.b[1]);
 		dev_dump(ex.b[1]);
 	} else if((hci.b[2] & 0x7f) == 0x00) {
-		if(verblevel >= 2) {
+		if(verblevel >= 1) {
 			xiv::printf("dev: %x [%x] %x - ", hci.b[2], dcl.h[1], cdb.info.command);
 			xiv::print(get_class(dcl.b[3]));
 			xiv::print("  **");
 		}
 		for(int x = 0; x < 6; x++) {
 			scanbar(bus, dev, fn, x, cdb.bar[x], cdb.barsz[x]);
-			if(verblevel >= 2) {
+			if(verblevel >= 1) {
 				xiv::printhex(cdb.bar[x]);
 				xiv::putc(':');
 			}
 		}
-		if(verblevel >= 2) xiv::putc(10);
+		if(verblevel >= 1) xiv::putc(10);
 		instance_pci(cdb);
 	} else {
-		if(verblevel >= 2) {
+		if(verblevel >= 1) {
 			xiv::printf("other: %x [%x] - ", hci.b[2], dcl.h[1]);
 			xiv::print(get_class(dcl.b[3]));
 			xiv::putc(10);
