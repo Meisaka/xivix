@@ -66,7 +66,7 @@ void VirtTerm::nextline() {
 		VTCell *cr = buffer+(uint32_t)width;
 		for(int y = 1; y < height; y++) {
 			for(int x = 0; x < width; x++) {
-				if(pr->code != cr->code || pr->attr != cr->attr) {
+				if(pr->code != cr->code || ((pr->attr ^ cr->attr) & 0xffffff)) {
 					cr->attr |= ATTR_UPDATE;
 				}
 				*pr = *cr;
