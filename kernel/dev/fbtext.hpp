@@ -23,13 +23,13 @@ private:
 	uint32_t fgcolor;
 	uint32_t bgcolor;
 	xiv::vector2<uint32_t> origin;
+	void dispchar32(uint8_t c, uint8_t *lp, uint32_t scanline);
 public:
 	FramebufferText(void *vm, uint32_t p, uint8_t bits);
 	~FramebufferText();
 	void resetpointer(void*);
 
 	void setoffset(uint32_t x, uint32_t y); // top/left of "window"
-	void dispchar32(uint8_t c, uint32_t x, uint32_t y);
 	void render_vc(xiv::VirtTerm &);
 
 	void setto(uint16_t c, uint16_t r) override;

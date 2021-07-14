@@ -284,6 +284,9 @@ void handle_key() {
 			if(!memeq(cmd, "arp", 3)) net::debug_arp();
 			if(!memeq(cmd, "pkt", 3)) net::debug_packet();
 			if(!memeq(cmd, "eth", 3)) hw::ethdev->debug_cmd(cmd + 3, cmdx - 3);
+			if((cmdx == 6) && (memeq(cmd, "serial", 6) == 0)) {
+				xiv::togglecomm();
+			}
 			if((cmdx == 6) && (memeq(cmd, "/debug", 6) == 0)) {
 				mem::debug(2);
 			}

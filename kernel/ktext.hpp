@@ -21,6 +21,7 @@ void printhex(uint32_t v, uint32_t bits);
 void printhexx(uint64_t v, uint32_t bits);
 void printf(const char *ftr, ...);
 void printattr(uint32_t x);
+void togglecomm();
 } // ns xiv
 #endif
 

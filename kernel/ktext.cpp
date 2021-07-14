@@ -16,9 +16,13 @@ namespace xiv {
 TextIO *txtout = nullptr;
 VirtTerm *txtvc = nullptr;
 FramebufferText *txtfb = nullptr;
+bool use_comm = true;
 
+void togglecomm() {
+	use_comm = !use_comm;
+}
 void putc(char c) {
-	ixcom_putc(c);
+	if(use_comm) ixcom_putc(c);
 	if(txtout == nullptr) return;
 	switch(c) {
 	case 10:
@@ -180,6 +184,9 @@ void printf(const char *ftr, ...) {
 				break;
 			case '%':
 				putc(*ftr);
+				break;
+			case 'c':
+				putc(va_arg(v, int));
 				break;
 			case 'd':
 				num = va_arg(v, uint32_t);

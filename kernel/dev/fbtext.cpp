@@ -31,19 +31,13 @@ static inline uint32_t rolr8(uint32_t v) {
 	return (v << 24) | (v >> 8);
 }
 
-void FramebufferText::dispchar32(uint8_t c, uint32_t x, uint32_t y) {
+void FramebufferText::dispchar32(uint8_t c, uint8_t *lp, uint32_t scanline) {
 	uint8_t *ecp = (uint8_t*)(ec1242+(c*2));
-	uint32_t ev;
-	uint8_t *lp;
-	uint32_t *cp;
-	lp = fbb + (pitch * y) + (x * 4);
-	for(uint32_t il = 0; il < ec_font_h; il++) {
-		cp = reinterpret_cast<uint32_t*>(lp);
-		lp += pitch;
-		ev = *(ecp++);
-		for(uint32_t ix = ec_font_w; ix-- ;cp++) {
-			*cp = (ev & (0x40 >> ix)) ? fgcolor:bgcolor;
-		}
+	uint32_t ev = ecp[scanline] >> 1;
+	uint32_t *cp = reinterpret_cast<uint32_t*>(lp);
+	for(uint32_t ix = ec_font_w; ix-- ;cp++) {
+		*cp = (ev & 1) ? fgcolor:bgcolor;
+		ev >>= 1;
 	}
 }
 void FramebufferText::resetpointer(void *vm) {
@@ -54,24 +48,41 @@ void FramebufferText::setoffset(uint32_t x, uint32_t y) {
 	origin.y = y;
 }
 void FramebufferText::render_vc(xiv::VirtTerm &vc) {
-	uint32_t xco = origin.x;
-	uint32_t yco = origin.y;
+	uint32_t bytesperpix = 4;
+	uint32_t xco = origin.x * bytesperpix;
 	uint32_t ro = 0;
-	for(uint32_t y = 0; y < vc.height; y++) {
-		xco = origin.x;
+	uint32_t roline = 0;
+	uint8_t scanline = 0;
+	uint32_t fheight = vc.height * ec_font_h;
+	uint32_t xadvance = bytesperpix * ec_font_w;
+	uint8_t *lp = fbb + (pitch * origin.y);
+	uint32_t lastatt = 0x100;
+	for(uint32_t y = 0; y < fheight; y++) {
+		uint8_t *lcp = lp + xco;
+		ro = roline;
 		for(uint32_t x = 0; x < vc.width; x++) {
 			uint32_t att = vc.buffer[ro].attr;
 			if(att & xiv::ATTR_UPDATE) {
-				vc.buffer[ro].attr ^= xiv::ATTR_UPDATE;
-				fgcolor = ufgcolors[att & 0xf];
-				bgcolor = ubgcolors[(att >> 4) & 0xf];
-				dispchar32(cast<uint8_t>(vc.buffer[ro].code), xco, yco);
+				if((att & 0xff) != lastatt) {
+					fgcolor = ufgcolors[att & 0xf];
+					bgcolor = ubgcolors[(att >> 4) & 0xf];
+					lastatt = att & 0xff;
+				}
+				dispchar32(cast<uint8_t>(vc.buffer[ro].code), lcp, scanline);
 			}
-			xco += ec_font_w;
+			lcp += xadvance;
 			ro++;
 		}
-		//ro += vc.width;
-		yco += ec_font_h;
+		lp += pitch;
+		if(++scanline == ec_font_h) {
+			ro = roline;
+			for(uint32_t x = 0; x < vc.width; x++) {
+				vc.buffer[ro].attr &= ~xiv::ATTR_UPDATE;
+				ro++;
+			}
+			scanline = 0;
+			roline = ro;
+		}
 	}
 }
 
@@ -123,7 +134,15 @@ void FramebufferText::putc(char c) {
 	}
 }
 void FramebufferText::putat(uint16_t c, uint16_t r, char v) {
-	dispchar32(cast<uint8_t>(v), origin.x + (c * ec_font_w), origin.y + (r * ec_font_h));
+	uint8_t *lp = fbb + (pitch * (origin.y + (r * ec_font_h)));
+	uint32_t bytesperpix = 4;
+	uint32_t xco = origin.x * bytesperpix;
+	uint32_t xadvance = bytesperpix * ec_font_w;
+	lp += xco + xadvance * c;
+	for(uint32_t y = 0; y < ec_font_h; y++) {
+		dispchar32(v, lp, y);
+		lp += pitch;
+	}
 }
 void FramebufferText::nextline() {
 	col = 0;
