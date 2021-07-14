@@ -57,10 +57,6 @@ uint8_t Keyboard::kbd_cmd(uint8_t v) {
 	}
 	return 0xFE;
 }
-void Keyboard::kbd_data(uint8_t v) {
-	if(!mp_serv) return;
-	mp_serv->client_send(v, mp_port);
-}
 
 bool Keyboard::init() {
 	mods = 0;
@@ -69,22 +65,22 @@ bool Keyboard::init() {
 	if(!mp_serv) return false;
 	uint32_t es = 0;
 	if(kbd_cmd(0xff) != 0xAA) es++;
-	kbd_data(0xed); // setled ...
+	send_data(0xed); // setled ...
 	if(kbd_cmd(0x07) != 0xFA) es++;
-	kbd_data(0xf0); // set code set ...
+	send_data(0xf0); // set code set ...
 	if(kbd_cmd(0x02) != 0xFA) es++;
 	/*
-	kbd_data(0xf0); // get code set ...
+	send_data(0xf0); // get code set ...
 	if(kbd_cmd(0x00) != 0xFA) es++;
 	if(es > 3) {
 		return false;
 	}
 	mp_serv->client_req(mp_port);
 	*/
-	kbd_data(0xf3);// set rate ...
+	send_data(0xf3);// set rate ...
 	if(kbd_cmd(0x02) != 0xFA) es++;
 	if(kbd_cmd(0xf4) != 0xFA) es++;// scan
-	kbd_data(0xed);// setled ...
+	send_data(0xed);// setled ...
 	if(kbd_cmd(0x03) != 0xFA) es++;
 	xiv::print("Keyboard: init success\n");
 	return true;

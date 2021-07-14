@@ -60,6 +60,10 @@ public:
 		mp_port = u;
 	}
 	virtual void port_data(uint8_t) = 0;
+	void send_data(uint8_t v) {
+		if(!mp_serv) return;
+		mp_serv->client_send(v, mp_port);
+	}
 };
 struct MultiPort {
 	virtual uint32_t port_query(uint32_t u) = 0;

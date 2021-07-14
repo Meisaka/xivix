@@ -191,6 +191,7 @@ xiv::VirtTerm *svt;
 FramebufferText *fbt;
 VGAText lvga;
 hw::Keyboard *kb1;
+hw::Mouse *mou1;
 constexpr int cmdlen = 4096;
 int cmdx = 0, cmdl = 0;
 char *cmd;
@@ -320,10 +321,12 @@ extern "C" void _kernel_main() {
 	//xiv::txtout = svt;
 	printf("Fetching VBE\n");
 	VBEModeInfo *vidinfo = reinterpret_cast<VBEModeInfo*>(0xc0001200);
+	uint32_t *vid = nullptr;
+	uint32_t vid_stride = 0;
 	if(vidinfo->phys_base) {
 		printf("Mapping video pages...\n");
 		uint64_t pbase = vidinfo->phys_base;
-		uint32_t *vid = reinterpret_cast<uint32_t*>(0xd0000000);
+		vid = reinterpret_cast<uint32_t*>(0xd0000000);
 		mem::vmm_request(0x800000, vid, pbase, mem::RQ_RW | mem::RQ_LARGE | mem::RQ_HINT);
 		uint32_t vidl = vidinfo->x_res * vidinfo->y_res;
 		printf("Display clear\n");
@@ -338,7 +341,8 @@ extern "C" void _kernel_main() {
 				vidinfo->phys_base,
 				vidinfo->mem_model
 			 );
-		fbt = new FramebufferText(vid, vidinfo->x_res * (vidinfo->bits_per_pixel / 8), vidinfo->bits_per_pixel);
+		vid_stride = vidinfo->x_res * (vidinfo->bits_per_pixel / 8);
+		fbt = new FramebufferText(vid, vid_stride, vidinfo->bits_per_pixel);
 		svt = &lvt;
 		xiv::txtout = svt;
  		uvec2 ulr = uvec2::center_align(uvec2(svt->width*6,svt->height*8), uvec2(vidinfo->x_res, vidinfo->y_res));
@@ -364,6 +368,11 @@ extern "C" void _kernel_main() {
 	kb1 = new hw::Keyboard();
 	kb1->lastkey2 = 0xffff;
 	psys->add_kbd(kb1);
+	psys->add_mou(mou1 = new hw::Mouse());
+	mou1->xlim = vidinfo->x_res - 1;
+	mou1->ylim = vidinfo->y_res - 1;
+	mou1->x = mou1->xlim / 2;
+	mou1->y = mou1->ylim / 2;
 	psys->init();
 
 	printf("PCI dump\n");
@@ -396,6 +405,13 @@ extern "C" void _kernel_main() {
 		if(psys->waiting()) {
 			psys->handle();
 			k++;
+		}
+		if(mou1->status & 0x80) {
+			mou1->status &= 0x7f;
+			if(vid) {
+				uint32_t *cur = vid + ((vid_stride / 4) * mou1->y) + mou1->x;
+				cur[0] = 0xffffff;
+			}
 		}
 		if(kb1->has_key()) {
 			handle_key();

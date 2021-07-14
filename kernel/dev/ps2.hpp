@@ -34,13 +34,32 @@ enum class PS2TYPE : uint32_t {
 	MOUSE5,
 };
 
+class Mouse : public Hardware, public MultiPortClient {
+private:
+public:
+	uint32_t mdata;
+	uint32_t x;
+	uint32_t y;
+	uint32_t xlim;
+	uint32_t ylim;
+	uint8_t smode;
+	uint8_t status;
+
+	Mouse();
+	~Mouse();
+
+	bool init() override;
+	void remove() override;
+	void port_data(uint8_t) override;
+	uint8_t mou_cmd(uint8_t);
+};
+
 class Keyboard : public Hardware, public MultiPortClient {
 private:
 	void key_down();
 	void key_up();
 	void init_proc();
 	uint8_t kbd_cmd(uint8_t v);
-	void kbd_data(uint8_t v);
 	uint32_t keybuf[16];
 	uint32_t keyev;
 	uint32_t istate;
@@ -88,12 +107,15 @@ private:
 	static void send_cmd(uint8_t v);
 	void signal_loss(uint32_t u);
 	bool cinit;
+	void init_kbd(uint32_t p); // start a keyboard
+	void init_mou(uint32_t p); // start a mouse
 public:
 	uint32_t err_n;
 	volatile uint8_t icode[4];
 	volatile uint8_t istatus[4];
 	volatile uint32_t interupted;
 	Keyboard *kb_drv;
+	Mouse *mou_drv;
 	PS2Port port[4];
 	uint16_t keycode[12];
 	uint16_t keycount;
@@ -108,8 +130,8 @@ public:
 	void handle(); // does stuff
 	static void system_reset(); // reset the whole system
 
-	void init_kbd(uint32_t p); // start a keyboard
 	void add_kbd(Keyboard*); // add a keyboard driver
+	void add_mou(Mouse*); // add a mouse driver
 	void client_send(uint32_t v, uint32_t u) override {
 		port_send(cast<uint8_t>(v), u);
 	}

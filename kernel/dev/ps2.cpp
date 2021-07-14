@@ -31,6 +31,7 @@ PS2::PS2() {
 	ivix_interrupt[12].rlocal = this;
 	ivix_interrupt[12].entry = PS2::irq12_signal;
 	kb_drv = nullptr;
+	mou_drv = nullptr;
 	for(unsigned i = 0; i < 4; i++) {
 		port[i] = {
 			PS2ST::INIT,
@@ -217,14 +218,32 @@ bool PS2::init() {
 
 	return true;
 }
+
 void PS2::add_kbd(Keyboard *k) {
 	kb_drv = k;
+}
+
+void PS2::add_mou(Mouse *k) {
+	mou_drv = k;
 }
 
 void PS2::init_kbd(uint32_t p) {
 	if(kb_drv) {
 		add_client(kb_drv, p);
 		if(kb_drv->init()) {
+			port[p].status = PS2ST::IDLE;
+		} else {
+			port[p].status = PS2ST::LOST;
+		}
+	} else {
+		port[p].status = PS2ST::LOST;
+	}
+}
+
+void PS2::init_mou(uint32_t p) {
+	if(mou_drv) {
+		add_client(mou_drv, p);
+		if(mou_drv->init()) {
 			port[p].status = PS2ST::IDLE;
 		} else {
 			port[p].status = PS2ST::LOST;
@@ -411,8 +430,8 @@ void PS2::handle() {
 			case PS2TYPE::MOUSE3:
 			case PS2TYPE::MOUSE4:
 			case PS2TYPE::MOUSE5:
-				xiv::printf("PS2: port %d init as mouse\n", i+1);
-				port[i].status = PS2ST::IDLE;
+				xiv::printf("PS2: port %d init as mouse%d\n", i+1, port[i].type);
+				init_mou(i);
 				break;
 			case PS2TYPE::KEYBOARD:
 				xiv::printf("PS2: port %d init as keyboard\n", i+1);
@@ -519,5 +538,117 @@ void PS2::port_send(uint8_t km, uint32_t ex) {
 		send_data(km);
 	}
 }
+
+Mouse::Mouse() {
+	smode = 0;
+	x = 0;
+	y = 0;
+	xlim = 1024;
+	ylim = 1024;
+}
+Mouse::~Mouse() {}
+bool Mouse::init() {
+	smode = 0;
+	while(mp_serv->client_req(mp_port) != ~0u);
+	if(mou_cmd(0xf6) != 0xfa) return false; // defaults
+	if(mou_cmd(0xf5) != 0xfa) return false; // stream off
+
+	// try for scroll wheel
+	if(mou_cmd(0xf3) != 0xfa) return false; // set sample rate
+	if(mou_cmd(200) != 0xfa) return false;
+	if(mou_cmd(0xf3) != 0xfa) return false; // set sample rate
+	if(mou_cmd(100) != 0xfa) return false;
+	if(mou_cmd(0xf3) != 0xfa) return false; // set sample rate
+	if(mou_cmd(80) != 0xfa) return false;
+	//if(mou_cmd(0xf2) != 0xfa) return false;
+	if(mou_cmd(0xf2) != 0xfa) return false; // get ID
+	uint32_t tmode = 1;
+	uint32_t r = 0;
+	if((r = mp_serv->client_req(mp_port)) != ~0u) {
+		r &= 0xff;
+		if(r == 3) tmode = 2; // 4 byte mode
+	}
+	if(tmode == 2) { // try for 5 button mode
+		if(mou_cmd(0xf3) != 0xfa) return false; // set sample rate
+		if(mou_cmd(200) != 0xfa) return false;
+		if(mou_cmd(0xf3) != 0xfa) return false; // set sample rate
+		if(mou_cmd(200) != 0xfa) return false;
+		if(mou_cmd(0xf3) != 0xfa) return false; // set sample rate
+		if(mou_cmd(80) != 0xfa) return false;
+		//if(mou_cmd(0xf2) != 0xfa) return false;
+		if(mou_cmd(0xf2) != 0xfa) return false; // get ID
+		if((r = mp_serv->client_req(mp_port)) != ~0u) {
+			r &= 0xff;
+			if(r == 4) tmode = 3; // 5 byte mode
+		}
+	}
+	xiv::printf("Mouse: enabled mode %d\n", tmode);
+	if(mou_cmd(0xf4) != 0xfa) return false; // stream on
+	smode = tmode;
+	return true;
+}
+void Mouse::remove() {
+}
+uint8_t Mouse::mou_cmd(uint8_t v) {
+	int i = 3;
+	if(!mp_serv) return 0xFE;
+	while(i > 0) {
+		i--;
+		mp_serv->client_send(v, mp_port);
+		uint32_t rc = mp_serv->client_req(mp_port);
+		if(rc == ~0u) continue;
+		rc &= 0xff;
+		if(rc != 0x0FE) {
+			return rc;
+		}
+	}
+	return 0xFE;
+}
+void Mouse::port_data(uint8_t d) {
+	mdata <<= 8;
+	mdata |= d;
+	uint8_t stat = 0;
+	uint8_t dx = 0;
+	uint8_t dy = 0;
+	switch(smode) {
+	case 0:
+		xiv::printf("Mouse: %08x\n", mdata);
+		mdata = 0;
+		return;
+	case 1:
+		if(!(mdata & 0x80000)) return;
+		mdata <<= 8;
+		break;
+	case 2:
+		if(!(mdata & 0x8000000)) return;
+		break;
+	case 3:
+		if(!(mdata & 0x8000000)) return;
+		break;
+	}
+	stat = mdata >> 24;
+	dx = (mdata >> 16) & 0xff;
+	dy = (mdata >> 8) & 0xff;
+	if(stat & 0x10) {
+		dx = -dx;
+		if(dx > x) x = 0;
+		else x -= dx;
+	} else {
+		x += dx;
+		if(x > xlim) x = xlim;
+	}
+	if(stat & 0x20) { // minus Y means DOWN
+		dy = -dy;
+		y += dy;
+		if(y > ylim) y = ylim;
+	} else {
+		if(dy > y) y = 0;
+		else y -= dy;
+	}
+	status = (stat & 0x7) | 0x80;
+	//xiv::printf("Mouse: %03d,%03d %02x:%02x\n", x, y, stat, mdata & 0xff);
+	mdata = 0;
+}
+
 
 } // hw
