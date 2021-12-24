@@ -11,26 +11,6 @@
 
 extern "C" void _ix_loadcr3(uint32_t);
 
-namespace acpi { // we'll just put this here for now :>
-
-struct RSDPDescriptor1 {
-	char sig[8];
-	uint8_t checksum;
-	char oem_id[6];
-	uint8_t revision;
-	uint32_t rsdt_phyaddr;
-} __attribute__((packed));
-
-struct RSDPDescriptor12 {
-	RSDPDescriptor1 v1;
-	uint32_t length;
-	uint64_t xsdt_phyaddr;
-	uint8_t checksum;
-	uint8_t resv[3];
-} __attribute__((packed));
-
-} // namespace acpi
-
 namespace mem {
 
 enum PageFlags : uint64_t {
@@ -827,68 +807,6 @@ static uint32_t tablefreelock;
 
 size_t const phyptr = ((&_kernel_start) - (&_kernel_load));
 
-const acpi::RSDPDescriptor12 *rsdpd = nullptr;
-
-void rsdp_validate(const uint32_t * where) {
-	using namespace acpi;
-	const uint8_t *ckb = (const uint8_t *)where;
-	uint32_t check = 0;
-	for(size_t i = 0; i < 20; i++) {
-		check += ckb[i];
-	}
-	if(check & 0xff) return; // invalid
-	const RSDPDescriptor12 *d = (const RSDPDescriptor12 *)where;
-	if(d->v1.revision == 0) { // version 1.0!
-		if(!rsdpd) {
-			rsdpd = d; // idk, maybe accept it
-		}
-	} else if(d->v1.revision == 2) {
-		check = 0;
-		for(size_t i = 20; i < 36; i++) {
-			check += ckb[i];
-		}
-		if(check & 0xff) return; // invalid v2
-		rsdpd = d; // always accept
-	}
-}
-void load_acpi() {
-	using namespace xiv;
-	print("loading tables...\n");
-	const uint8_t *sysbase = (const uint8_t*)phyptr;
-	// magic segment pointer should be at 0x40e, convert it and start there
-	const uint32_t *ebda = (const uint32_t*)(sysbase + ((*(const uint16_t*)(sysbase + 0x40e)) << 4));
-	printf("ACPI: seg:%x\n", ebda);
-	const uint32_t rsd_ptr_[] = { 0x20445352, 0x20525450 }; // text to look for
-	for(size_t i = 0; i < 64; i++) { // scan first 1KB of that
-		if(ebda[0] == rsd_ptr_[0] && ebda[1] == rsd_ptr_[1]) {
-			printf("ACPI: hinted RSDP: %x\n", ebda);
-			rsdp_validate(ebda);
-		}
-		ebda += 4; // skip ahead every 16 bytes (the enforced alignment)
-	}
-	ebda = (const uint32_t*)(sysbase + 0xe0000);
-	for(size_t i = 0; i < 0x2000; i++) { // next scan 0xE0000 - 0xFFFFF
-		if(ebda[0] == rsd_ptr_[0] && ebda[1] == rsd_ptr_[1]) {
-			printf("ACPI: possible RSDP: %x\n", ebda);
-			rsdp_validate(ebda);
-		}
-		ebda += 4; // again, every 16 bytes
-	}
-	if(rsdpd == nullptr) {
-		print("ACPI: no valid tables found\n");
-		return;
-	}
-	if(!rsdpd->v1.revision) {
-		print("ACPI: version 1 tables found, but currently unsupported!\n");
-		return;
-		//uint64_t phy = rsdpd->v1.rsdt_phyaddr;
-	}
-	uint64_t phy = 0;
-	phy = rsdpd->xsdt_phyaddr;
-	printf("ACPI: version %x table at v_%08x -> p_%lx\n",
-			rsdpd->v1.revision, rsdpd, phy);
-}
-
 void load_memmap() {
 	using namespace xiv;
 	print("loading memory map...\n");
@@ -917,6 +835,8 @@ void initialize() {
 	uintptr_t kp_start = (uintptr_t)&_kernel_load;
 	uintptr_t kv_end = (uintptr_t)&_kernel_end;
 	uintptr_t k_pages = (kv_end - kv_start) >> 12;
+	uintptr_t k_lg_pages = (k_pages >> 9) + ((k_pages & 511) ? 1 : 0);
+	uintptr_t k_reserved_after = (k_lg_pages << 9) - k_pages;
 	xiv::printf("Kernel %x - %x (%x)\n", kv_start, kp_start, phyptr);
 	xiv::printf("PDP: %x\n", (size_t)pdpt);
 	xiv::printf("Heap start: %x\n", kv_end);
@@ -938,6 +858,7 @@ void initialize() {
 	load_memmap();
 	// the blocks the kernel is sitting in are definitely being used
 	phymm.set_extent(kp_start, k_pages, MX_FIXED);
+	phymm.set_extent(kp_start + (k_pages * PAGE_SIZE), k_reserved_after, MX_PRE);
 	phymm.allocate(8); // the page directories and indicies
 	phymm.allocate(2); // the PMM and VMM control blocks
 	//memalloc.init(blockptr); blockptr += PAGE_SIZE;
@@ -945,6 +866,7 @@ void initialize() {
 	vmm.set_extent(0xc0000000, 0x3fff0, MX_FREE); // the top 1GB is all usable by the kernel
 	vmm.set_extent(0xc0000000, 0x100, MX_FIXED); // legacy memory area
 	vmm.set_extent(kv_start, k_pages, MX_FIXED); // kernel
+	vmm.set_extent(kv_start + (k_pages * PAGE_SIZE), k_reserved_after, MX_PRE);
 	vmm.allocate(8);
 	vmm.allocate(2);
 
@@ -1042,6 +964,7 @@ static void map_page(phyaddr_t phy, uintptr_t t, uint64_t f) {
 		//xiv::printf("VMM:/%x/%x/%x/", ofs_dp, ofs_d, ofs_t);
 		if((tablebase & Present) && (tablebase & Large)) {
 			// ignore large mapping overwrite
+			xiv::printf("large mapping override!\n");
 		} else {
 			PageDirIndex *pdi = pdpt->pgdir_idx[ofs_dp];
 			if(!pdi) {
@@ -1059,7 +982,7 @@ static void map_page(phyaddr_t phy, uintptr_t t, uint64_t f) {
 					cpte[x] = 0;
 				}
 			} else {
-				//xiv::printf("table exist", ptptr, t, phy.m);
+				//xiv::printf("table exist\n", ptptr, t, phy.m);
 				//xiv::printhexx(ptptr->pte[ofs_t], 64); xiv::putc('>');
 				//xiv::printhexx(phy.m, 64); xiv::putc(10);
 			}
@@ -1101,7 +1024,8 @@ void * vmm_request(size_t sz, void* hint, uint64_t phys, uint32_t flag) {
 		enda = bega + pgc * PAGE_SIZE;
 		if(enda < bega) return nullptr;
 	}
-	// XXX xiv::printf("vmm_request: vaddr: %0x-%0x\n", bega, enda);
+	// XXX
+	xiv::printf("vmm_request: vaddr: %0x-%0x\n", bega, enda);
 	hint = (void*)bega;
 	if(!(flag & RQ_LARGE)) {
 		size_t pgc = (enda - bega) / PAGE_SIZE;

@@ -357,10 +357,9 @@ extern "C" void _kernel_main() {
 	show_mem_map();
 
 	printf("  XIVIX kernel hello!\n");
-
-	//_ix_totalhalt();
-
 	pfinit();
+	acpi::load_acpi(); // TODO: move this to directly after mem::initialize
+	//_ix_totalhalt();
 	hw::init();
 
 	printf("Scanning PS/2\n");
@@ -381,8 +380,6 @@ extern "C" void _kernel_main() {
 	if(vidinfo->phys_base) fbt->render_vc(*svt);
 
 	net::init();
-
-	mem::load_acpi(); // TODO: move this to directly after mem::initialize
 
 	printf("Command loop start\n");
 	cmd = (char*)kmalloc(cmdlen);

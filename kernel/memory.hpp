@@ -10,6 +10,10 @@
 
 #include "ktypes.hpp"
 
+namespace acpi {
+void load_acpi();
+} // namespace acpi
+
 namespace mem {
 
 constexpr size_t const PAGE_SIZE = 0x1000;
@@ -116,7 +120,6 @@ enum REQUEST_FLAGS : uint32_t {
 };
 
 void initialize();
-void load_acpi();
 void debug(int);
 uint64_t translate_page(uintptr_t t);
 //void map_page(phyaddr_t, uintptr_t, uint32_t);
