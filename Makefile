@@ -22,7 +22,7 @@ KLINKFLAGS := -ffreestanding -O2 -nostdlib
 .PHONY: mf
 .PHONY: mftest
 
-all: pxe.img kernel.img mf
+all: pxe.img kernel.elf mf
 
 mf: $(KOBJ)
 
@@ -49,6 +49,7 @@ pxeboot.o: pxeboot.s
 
 pxe.img: pxeboot.o pxe.ld
 	@echo "[LD PXE ] "; $(ld) -T pxe.ld --oformat binary -o pxe.img pxeboot.o
+	@echo "[LD PXED] "; $(ld) -T pxe.ld -o pxe-sym.elf pxeboot.o
 
 make/%.dep: kernel/%.cpp Makefile
 	@echo '|DEP C++|' '$@ $*'
@@ -74,6 +75,6 @@ make/%.o: kernel/%.cpp Makefile
 kernel.elf: Makefile krnl.ld $(KOBJ)
 	@echo "[LINK   ] kernel.elf"; $(cxx) -T krnl.ld -o kernel.elf $(KLINKFLAGS) $(KOBJ) -lgcc
 
-kernel.img: kernel.elf
-	@echo "[OBJCOPY] kernel"; $(objcopy) -O binary kernel.elf kernel.img
+#kernel.img: kernel.elf
+#	@echo "[OBJCOPY] kernel"; $(objcopy) -O binary kernel.elf kernel.img
 

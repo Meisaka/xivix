@@ -5,12 +5,12 @@ SECTIONS {
 	_kernel_start = 0xc0000000 + 1M ;
 	_vgabase = 0xc00B8000 ;
 	. = _kernel_load;
-	.text.init : AT( 1M ) {
+	.ixboot ALIGN(4K) : AT( 1M ) {
 		*( .ixboot )
 	}
-	. = _kernel_start + SIZEOF( .text.init ) ;
-	.text ALIGN(4K) : AT( ALIGN(1M + SIZEOF(.text.init), 4K) ) {
-		*(.text)
+	. = _kernel_start + 4K;
+	.text ALIGN(4K) : AT( 1M + 4K ) {
+		*( .text )
 	}
 	.rodata ALIGN(4K) : {
 		*(.rodata)

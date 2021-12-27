@@ -54,52 +54,31 @@ _ivix_int_n: .global _ivix_int_n
 	.int 0xeca70433
 _ix_entry:
 	.global _ix_entry
-	lgdt .ixboot.gdtptr	# load initial GDT
-	leal _kernel_phy_end, %eax	# set up page directory at end of kernel
-	mov %eax, %edi
-	orl $0x1, %eax
-	movl %eax, %edx
-	xor %eax, %eax
-	movl %edx, _ivix_phy_pdpt	# map 0x0.. and 0xc.. in virtual memory
-	movl %eax, _ivix_phy_pdpt + 4
-	movl %edx, _ivix_phy_pdpt + 0x08
-	movl %eax, _ivix_phy_pdpt + 0x0c
-	movl %edx, _ivix_phy_pdpt + 0x10
-	movl %eax, _ivix_phy_pdpt + 0x14
-	movl %edx, _ivix_phy_pdpt + 0x18
+	leal _kernel_phy_end, %edx	# set up page directory at end of kernel
+	mov %edx, %edi	# save this for later
+	orl $0x1, %edx	# present flag
+	xor %eax, %eax	# high bits are zero
+	movl %edx, _ivix_phy_pdpt + 0x0 # map 0x0..
+	movl %eax, _ivix_phy_pdpt + 0x4
+	movl %edx, _ivix_phy_pdpt + 0x18 # map 0xC..
 	movl %eax, _ivix_phy_pdpt + 0x1c
-	movl %eax, %edx
+	xor %edx, %edx
 	orl $0x83, %eax		# set flags on it 2M pages
-	movl %eax, _kernel_phy_end
-	movl %edx, _kernel_phy_end + 4
-	addl $0x200000, %eax 	# identity map 0 - 4M
-	movl %eax, _kernel_phy_end + 8
-	movl %edx, _kernel_phy_end + 12
-	movl %cr4, %eax
+	movl %eax, (%edi)	# identity map 0 - 2M
+	movl %edx, 4(%edi)
+	addl $0x200000, %eax 	# identity map 2M - 4M
+	movl %eax, 8(%edi)
+	movl %edx, 12(%edi)
+	movl %cr4, %eax # control bits
 	orl $0x20, %eax	# enable PAE
 	movl %eax, %cr4
 	leal _ivix_phy_pdpt, %eax	# load CR3 with the page table
 	movl %eax, %cr3
 	movl %cr0, %eax
 	orl $0x80000000, %eax	# enable paging bit
-	movl %eax, %cr0
-	ljmp $0x10, $1f
+	movl %eax, %cr0		# paging is on past this point!
 1:
 	jmp _kernel_entry
-
-.align 8
-.ixboot.gdtptr:
-.word 4 * 8
-.int .ixboot.gdt
-.align 8
-.ixboot.gdt:
-.int 0
-.int 0
-.int 0x0000ffff
-.int 0x00cf9200
-.int 0x0000ffff
-.int 0x00cf9a00
-
 .align 32
 _ivix_phy_pdpt:
 .global _ivix_phy_pdpt
