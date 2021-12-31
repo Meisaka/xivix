@@ -54,7 +54,7 @@ struct ExceptDef {
 
 #pragma pack(pop)
 
-extern "C" IntrDef ivix_interrupt[32];
+extern "C" IntrDef ivix_interrupt[66];
 extern "C" ExceptDef ivix_except[32];
 
 #endif

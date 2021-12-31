@@ -9,7 +9,6 @@
 #include "dev/vgatext.hpp"
 #include "dev/fbtext.hpp"
 #include "kio.hpp"
-#include <stdarg.h>
 
 namespace xiv {
 
@@ -35,6 +34,18 @@ void putc(char c) {
 		txtout->putc(c);
 	}
 }
+void iputc(TextIO *out, char c) {
+	if(out == txtout) { // special case
+		putc(c);
+		return;
+	}
+	if(c == 10) {
+		out->nextline();
+	} else {
+		out->putc(c);
+	}
+}
+
 void printattr(uint32_t x) {
 	if(txtvc) {
 		txtvc->setattr(x);
@@ -43,12 +54,18 @@ void printattr(uint32_t x) {
 void printn(const char* s, size_t n) {
 	while(n--) { putc(*(s++)); }
 }
+void iprintn(TextIO *out, const char* s, size_t n) {
+	while(n--) { iputc(out, *(s++)); }
+}
 
 void print(const char* s) {
 	while(*s != 0) { putc(*(s++)); }
 }
+void iprint(TextIO *out, const char* s) {
+	while(*s != 0) { iputc(out, *(s++)); }
+}
 
-void printdec(uint64_t d, uint32_t s, int sf) {
+void iprintdec(TextIO *out, uint64_t d, uint32_t s, int sf) {
 	char num[20];
 	unsigned l = 0;
 	if(!d) {
@@ -60,13 +77,13 @@ void printdec(uint64_t d, uint32_t s, int sf) {
 		l++;
 	}
 	while(l < s) {
-		putc(sf);
+		iputc(out, sf);
 		s--;
 	}
-	printn(num+(20-l), l);
+	iprintn(out, num+(20-l), l);
 }
 
-void printhex(uint32_t v) {
+void iprinthex(TextIO *out, uint32_t v) {
 	int i;
 	for(i = 32; i > 4 && ((v >> (i-4)) & 0x0f) == 0; i-=4); // get digit length
 	do {
@@ -74,21 +91,23 @@ void printhex(uint32_t v) {
 		char c = (v >> i) & 0x0f;
 		if(c > 9) c += 7;
 		c += '0';
-		putc(c);
+		iputc(out, c);
 	} while(i > 0);
 }
-void printhexs(uint32_t v) {
+
+void iprinthexs(TextIO *out, uint32_t v) {
 	int i;
-	for(i = 32; i > 4 && ((v >> (i-4)) & 0x0f) == 0; i-=4) putc(' '); // get digit length
+	for(i = 32; i > 4 && ((v >> (i-4)) & 0x0f) == 0; i-=4) iputc(out, ' '); // get digit length
 	do {
 		i -= 4;
 		char c = (v >> i) & 0x0f;
 		if(c > 9) c += 7;
 		c += '0';
-		putc(c);
+		iputc(out, c);
 	} while(i > 0);
 }
-void printhex(uint64_t v) {
+
+void iprinthex(TextIO *out, uint64_t v) {
 	int i;
 	for(i = 64; i > 4 && ((v >> (i-4)) & 0x0f) == 0; i-=4); // get digit length
 	do {
@@ -96,21 +115,21 @@ void printhex(uint64_t v) {
 		char c = (v >> i) & 0x0f;
 		if(c > 9) c += 7;
 		c += '0';
-		putc(c);
+		iputc(out, c);
 	} while(i > 0);
 }
-void printhexs(uint64_t v, uint32_t s, int sf) {
+void iprinthexs(TextIO *out, uint64_t v, uint32_t s, int sf) {
 	int i;
-	for(i = s * 4; i > 4 && ((v >> (i-4)) & 0x0f) == 0; i-=4) putc(sf); // get digit length
+	for(i = s * 4; i > 4 && ((v >> (i-4)) & 0x0f) == 0; i-=4) iputc(out, sf); // get digit length
 	do {
 		i -= 4;
 		char c = (v >> i) & 0x0f;
 		if(c > 9) c += 7;
 		c += '0';
-		putc(c);
+		iputc(out, c);
 	} while(i > 0);
 }
-void printhex(uint32_t v, uint32_t bits) {
+void iprinthex(TextIO *out, uint32_t v, uint32_t bits) {
 	if(bits > 32) bits = 32;
 	int i = bits ^ (bits & 0x3);
 	do {
@@ -118,10 +137,10 @@ void printhex(uint32_t v, uint32_t bits) {
 		char c = (v >> i) & 0x0f;
 		if(c > 9) c += 7;
 		c += '0';
-		putc(c);
+		iputc(out, c);
 	} while(i > 0);
 }
-void printhexx(uint64_t v, uint32_t bits) {
+void iprinthexx(TextIO *out, uint64_t v, uint32_t bits) {
 	if(bits > 64) bits = 64;
 	int i = bits ^ (bits & 0x3);
 	do {
@@ -129,20 +148,29 @@ void printhexx(uint64_t v, uint32_t bits) {
 		char c = (v >> i) & 0x0f;
 		if(c > 9) c += 7;
 		c += '0';
-		putc(c);
+		iputc(out, c);
 	} while(i > 0);
 }
 
 #define PMODE_LONG 3
+void iprintf(TextIO *out, const char *ftr, ...) {
+	va_list v;
+	va_start(v, ftr);
+	ivprintf(out, ftr, v);
+	va_end(v);
+}
 void printf(const char *ftr, ...) {
 	va_list v;
+	va_start(v, ftr);
+	ivprintf(txtout, ftr, v);
+	va_end(v);
+}
+void ivprintf(TextIO *out, const char *ftr, va_list v) {
 	unsigned rs = 0;
 	int pad = 0;
 	int padl = 0;
 	uint32_t num;
 	uint64_t numx;
-
-	va_start(v, ftr);
 
 	while(*ftr) {
 		switch(rs) {
@@ -151,7 +179,7 @@ void printf(const char *ftr, ...) {
 				rs = 1;
 				pad = 0;
 			} else {
-				putc(*ftr);
+				iputc(out, *ftr);
 			}
 			break;
 		case 1:
@@ -183,26 +211,26 @@ void printf(const char *ftr, ...) {
 				rs = PMODE_LONG;
 				break;
 			case '%':
-				putc(*ftr);
+				iputc(out, *ftr);
 				break;
 			case 'c':
-				putc(va_arg(v, int));
+				iputc(out, va_arg(v, int));
 				break;
 			case 'd':
 				num = va_arg(v, uint32_t);
-				printdec(num, padl, pad == 2 ? ' ':'0');
+				iprintdec(out, num, padl, pad == 2 ? ' ':'0');
 				break;
 			case 's':
-				print(va_arg(v, const char *));
+				iprint(out, va_arg(v, const char *));
 				break;
 			case 'x':
 				num = va_arg(v, uint32_t);
-				if(pad) printhexs(num, padl, pad == 2 ? ' ':'0');
-				else printhex(num);
+				if(pad) iprinthexs(out, num, padl, pad == 2 ? ' ':'0');
+				else iprinthex(out, num);
 				break;
 			default:
-				putc('%');
-				putc(*ftr);
+				iputc(out, '%');
+				iputc(out, *ftr);
 			}
 			break;
 		case 2:
@@ -226,19 +254,19 @@ void printf(const char *ftr, ...) {
 				break;
 			case 'd':
 				num = va_arg(v, uint32_t);
-				printdec(num, padl, pad == 2 ? ' ':'0');
+				iprintdec(out, num, padl, pad == 2 ? ' ':'0');
 				break;
 			case 's':
-				print(va_arg(v, const char *));
+				iprint(out, va_arg(v, const char *));
 				break;
 			case 'x':
 				num = va_arg(v, uint32_t);
-				if(pad) printhexs(num, padl, pad == 2 ? ' ':'0');
-				else printhex(num);
+				if(pad) iprinthexs(out, num, padl, pad == 2 ? ' ':'0');
+				else iprinthex(out, num);
 				break;
 			default:
-				putc('%');
-				putc(*ftr);
+				iputc(out, '%');
+				iputc(out, *ftr);
 			}
 			break;
 		case PMODE_LONG:
@@ -254,22 +282,21 @@ void printf(const char *ftr, ...) {
 				break;
 			case 'd':
 				numx = va_arg(v, uint64_t);
-				printdec(numx, padl, pad == 2 ? ' ':'0');
+				iprintdec(out, numx, padl, pad == 2 ? ' ':'0');
 				break;
 			case 'x':
 				numx = va_arg(v, uint64_t);
-				if(pad) printhexs(numx, padl, pad == 2 ? ' ':'0');
-				else printhex(numx);
+				if(pad) iprinthexs(out, numx, padl, pad == 2 ? ' ':'0');
+				else iprinthex(out, numx);
 				break;
 			default:
-				putc('%');
-				putc(*ftr);
+				iputc(out, '%');
+				iputc(out, *ftr);
 			}
 			break;
 		}
 		ftr++;
 	}
-	va_end(v);
 }
 
 }

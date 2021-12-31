@@ -8,6 +8,6 @@
 #include "interrupt.hpp"
 
 
-IntrDef ivix_interrupt[32];
+IntrDef ivix_interrupt[66];
 ExceptDef ivix_except[32];
 

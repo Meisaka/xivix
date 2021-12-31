@@ -335,7 +335,7 @@ e1000::e1000(pci::PCIBlock &pcib) {
 	for(size_t n = 0; n < (descpage_size / sizeof(size_t)); n++) {
 		vp[n] = 0;
 	}
-	ivix_interrupt[pcib.info.int_line] = { .entry = e1000_intcall, .rlocal = this };
+	ivix_interrupt[40 + pcib.info.int_line] = { .entry = e1000_intcall, .rlocal = this };
 }
 
 e1000::~e1000() {

@@ -131,24 +131,20 @@ void dev_fn_check(uint8_t bus, uint8_t dev, uint8_t fn) {
 		dev_dump(ex.b[1]);
 	} else if((hci.b[2] & 0x7f) == 0x00) {
 		if(verblevel >= 1) {
-			xiv::printf("dev: %x [%x] %x - ", hci.b[2], dcl.h[1], cdb.info.command);
-			xiv::print(get_class(dcl.b[3]));
-			xiv::print("  **");
+			xiv::printf("dev: %x [%x] %x - %s  **",
+				hci.b[2], dcl.h[1], cdb.info.command, get_class(dcl.b[3]));
 		}
 		for(int x = 0; x < 6; x++) {
 			scanbar(bus, dev, fn, x, cdb.bar[x], cdb.barsz[x]);
 			if(verblevel >= 1) {
-				xiv::printhex(cdb.bar[x]);
-				xiv::putc(':');
+				xiv::printf("%x:", cdb.bar[x]);
 			}
 		}
 		if(verblevel >= 1) xiv::putc(10);
 		instance_pci(cdb);
 	} else {
 		if(verblevel >= 1) {
-			xiv::printf("other: %x [%x] - ", hci.b[2], dcl.h[1]);
-			xiv::print(get_class(dcl.b[3]));
-			xiv::putc(10);
+			xiv::printf("other: %x [%x] - %s\n", hci.b[2], dcl.h[1], get_class(dcl.b[3]));
 		}
 	}
 }

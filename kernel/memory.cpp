@@ -951,7 +951,7 @@ static void map_page(phyaddr_t phy, uintptr_t t, uint64_t f) {
 	uint32_t ofs_t = (t >> 12) & 0x1FF;
 	PageDir *dirptr = pdpt->pgdir[ofs_dp];
 	if(f & Large) {
-		xiv::printhex((size_t)&dirptr->entry[ofs_d], 32);
+		xiv::printf("%x", (size_t)&dirptr->entry[ofs_d]);
 		dirptr->set(ofs_d, phy.m, Present, Large, (PageFlags)(f & (Writable | Usermode)));
 		xiv::printf(" map_page %x = ((%x))\n", t, dirptr->entry[ofs_d]);
 		_ix_loadcr3((uint32_t)&_ivix_phy_pdpt); // reset page tables
@@ -1025,7 +1025,7 @@ void * vmm_request(size_t sz, void* hint, uint64_t phys, uint32_t flag) {
 		if(enda < bega) return nullptr;
 	}
 	// XXX
-	xiv::printf("vmm_request: vaddr: %0x-%0x\n", bega, enda);
+	//xiv::printf("vmm_request: vaddr: %0x-%0x\n", bega, enda);
 	hint = (void*)bega;
 	if(!(flag & RQ_LARGE)) {
 		size_t pgc = (enda - bega) / PAGE_SIZE;

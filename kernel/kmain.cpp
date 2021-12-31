@@ -13,8 +13,10 @@
 #include "dev/fbtext.hpp"
 #include "dev/ps2.hpp"
 #include "dev/pci.hpp"
+#include "dev/cmos.hpp"
 
 #include "memory.hpp"
+#include "acpi.hpp"
 
 #include <stdarg.h>
 
@@ -55,7 +57,7 @@ void show_mem_map() {
 	uint32_t lim = *((uint16_t*)0xc0000500);
 	mmentry *mo = (mmentry*)0xc0000800;
 	for(uint32_t i = 0; i < lim; i++) {
-		printhexx(mo->start, 64);
+		printf("%016lx", mo->start);
 		printf(" - % x - %d (%x)\n", mo->size, mo->type, mo->exattrib);
 		mo++;
 	}
@@ -189,6 +191,7 @@ namespace hw {
 
 xiv::VirtTerm *svt;
 FramebufferText *fbt;
+FramebufferText *fbt_status;
 VGAText lvga;
 hw::Keyboard *kb1;
 hw::Mouse *mou1;
@@ -219,13 +222,14 @@ void handle_key() {
 			case 'd':
 				mem::debug(0);
 				break;
+			case 'T':
+				xiv::printf("CMOS timer count=%x\n", hw::CMOS::instance.timer);
+				break;
+			case 't':
+				xiv::printf("timer count=%x\n", _ivix_int_n);
+				break;
 			case 'a':
-				{
-				char * leak=(char*)kmalloc(0x4000);
-				if(!leak) { xiv::printf("Allocation failed\n"); break; }
-				for(int ux = 0; ux < 0x4000; ux++) leak[ux] = 0x55;
-				mem::debug(0);
-				}
+				xiv::printf("APIC count=%x\n", _ivix_int_ac);
 				break;
 			case 's':
 				{
@@ -285,6 +289,7 @@ void handle_key() {
 			if(!memeq(cmd, "arp", 3)) net::debug_arp();
 			if(!memeq(cmd, "pkt", 3)) net::debug_packet();
 			if(!memeq(cmd, "eth", 3)) hw::ethdev->debug_cmd(cmd + 3, cmdx - 3);
+			if(!memeq(cmd, "acpi", 4)) acpi::debug_acpi(cmd + 4, cmdx - 4);
 			if((cmdx == 6) && (memeq(cmd, "serial", 6) == 0)) {
 				xiv::togglecomm();
 			}
@@ -295,7 +300,7 @@ void handle_key() {
 		cmdl = cmdx;
 		cmdx = 0;
 	}
-	nxf = _ivix_int_n + 10;
+	nxf = _ivix_int_f + 100;
 	flk = true;
 	if(fbt) fbt->putat(svt->getcol(), svt->getrow(), '_');
 }
@@ -343,10 +348,12 @@ extern "C" void _kernel_main() {
 			 );
 		vid_stride = vidinfo->x_res * (vidinfo->bits_per_pixel / 8);
 		fbt = new FramebufferText(vid, vid_stride, vidinfo->bits_per_pixel);
+		fbt_status = new FramebufferText(vid, vid_stride, vidinfo->bits_per_pixel);
 		svt = &lvt;
 		xiv::txtout = svt;
  		uvec2 ulr = uvec2::center_align(uvec2(svt->width*6,svt->height*8), uvec2(vidinfo->x_res, vidinfo->y_res));
  		fbt->setoffset(ulr.x, ulr.y);
+		fbt_status->setoffset(ulr.x, 0);
  		txtvc = svt;
  		txtfb = fbt;
 		printf("Framebuffer setup complete\n");
@@ -384,15 +391,24 @@ extern "C" void _kernel_main() {
 	printf("Command loop start\n");
 	cmd = (char*)kmalloc(cmdlen);
 
-	nxf = _ivix_int_n + 40; // TODO proper Timers!
+	nxf = _ivix_int_f + 40; // TODO proper Timers!
 
+	uint32_t last_timer = hw::CMOS::instance.timer;
 	while(true) {
-		if(_ivix_int_n > nxf) {
-			nxf = _ivix_int_n + 250;
+		if(_ivix_int_f > nxf) {
+			nxf = _ivix_int_f + 250;
 			flk =! flk;
 			if(fbt) {
 				fbt->putat(svt->getcol(), svt->getrow(), flk?'_':' ');
 			}
+		}
+		auto &cmos = hw::CMOS::instance;
+		if(last_timer != cmos.timer) {
+			last_timer = cmos.timer;
+			fbt_status->setto(0, 0);
+			xiv::iprintf(fbt_status, "RTC: %02d:%02d:%02d d%d m%d y%04d\n",
+				cmos.hour, cmos.minute, cmos.second,
+				cmos.monthday, cmos.month, cmos.year);
 		}
 		// these run periodic tasks, but all have different names
 		// owo

@@ -16,6 +16,7 @@ SECTIONS {
 		*(.rodata)
 	}
 	.data : ALIGN(4K) {
+		*(.idt)
 		*(.data)
 	}
 	.ctors : ALIGN(4K) {

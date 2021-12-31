@@ -26,10 +26,11 @@ void PS2::irq12_signal(void *u, uint32_t, ixintrctx*) {
 PS2::PS2() {
 	kmd_l = 0;
 	err_n = 0;
-	ivix_interrupt[1].rlocal = this;
-	ivix_interrupt[1].entry = PS2::irq1_signal;
-	ivix_interrupt[12].rlocal = this;
-	ivix_interrupt[12].entry = PS2::irq12_signal;
+	// XXX possible bug: if both IRQs don't fire, the PS2 driver may hang
+	ivix_interrupt[32+1].rlocal = this;
+	ivix_interrupt[32+1].entry = PS2::irq1_signal;
+	ivix_interrupt[32+12].rlocal = this;
+	ivix_interrupt[32+12].entry = PS2::irq12_signal;
 	kb_drv = nullptr;
 	mou_drv = nullptr;
 	for(unsigned i = 0; i < 4; i++) {

@@ -22,6 +22,8 @@ void _ix_totalhalt();
 void _ix_req();
 void _ix_reqr();
 extern volatile uint32_t _ivix_int_n;
+extern volatile uint32_t _ivix_int_f;
+extern volatile uint32_t _ivix_int_ac;
 extern uint8_t _ix_inb(uint16_t a);
 uint16_t _ix_inw(uint16_t a);
 uint32_t _ix_inl(uint16_t a);

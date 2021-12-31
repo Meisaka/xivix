@@ -10,10 +10,6 @@
 
 #include "ktypes.hpp"
 
-namespace acpi {
-void load_acpi();
-} // namespace acpi
-
 namespace mem {
 
 constexpr size_t const PAGE_SIZE = 0x1000;

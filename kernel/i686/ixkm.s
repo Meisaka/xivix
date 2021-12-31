@@ -30,12 +30,12 @@ ixstk:
 .endm
 .macro idt_int offs=0, sel=0, dpl=0
 .int \offs
-.word \sel
 .byte 0
 .byte 0b10001110 | (\dpl << 5)
+.word \sel
 .endm
 
-# data tables
+.set KSEG, 0x10
 
 _ivix_idt_ptr:
 .word 0x07ff
@@ -48,6 +48,10 @@ _ivix_gdt_ptr:
 _ivix_dump_n:
 .int 0
 _ivix_int_n: .global _ivix_int_n
+.int 0
+_ivix_int_f: .global _ivix_int_f
+.int 0
+_ivix_int_ac: .global _ivix_int_ac
 .int 0
 
 .section .ixboot,"ax"
@@ -108,7 +112,7 @@ _kernel_entry:
 	sub $0xc, %esp		# align the stack
 	call _ix_construct	# call ctors
 	call _ix_ecentry	# start the comm port
-	sti			# interupts on
+	#sti			# interupts on
 	call _kernel_main	# jump to C/C++
 	jmp _ix_halt		# idle loop if we get here
 
@@ -282,7 +286,7 @@ ixcom_hello:
 	mov $_lc_hello, %esi
 	call ixcom_printz
 	ret
-_lc_hello: .asciz "hello\n"
+_lc_hello: .asciz "xivix hello\n"
 _lc_totalhalt: .asciz "totalhalt\n"
 
 _ix_ecentry:
@@ -518,6 +522,84 @@ _iv_irqload:
 	popa
 	iret
 
+_iv_apic_irq:
+	mov %esp, %edx	# check interrupt table for IRQ number
+	mov (%esp), %eax
+	lea ivix_interrupt(,%eax,8), %esi
+	mov (%esi), %ebx
+	test %ebx, %ebx	# if it has a handler, call it
+	je 1f
+	push %edx
+	push %eax
+	movl 4(%esi), %eax
+	push %eax
+	call *%ebx
+	add $12, %esp
+1:
+	pop %eax
+	call _apic_eoi
+	popa
+	iret
+
+_iv_apic_timer:
+	pusha
+	push $0x40
+	call _iv_add_f
+	jmp _iv_apic_irq
+_iv_apic_sv:
+	pusha
+	push $0x41
+	call _iv_add_ac
+	call _apic_svh
+	jmp _iv_apic_irq
+
+.macro AIRQ num
+_iv_airq\num:
+	pusha
+	push $0x\num
+	jmp _iv_apic_irq
+.endm
+AIRQ 20
+AIRQ 21
+_iv_airq22:
+	pusha
+	push $0x22
+	call _iv_add_n
+	jmp _iv_apic_irq
+AIRQ 23
+AIRQ 24
+AIRQ 25
+AIRQ 26
+AIRQ 27
+_iv_airq28:
+	pusha
+	push $0x28
+	call _iv_add_ac
+	jmp _iv_apic_irq
+AIRQ 29
+AIRQ 2a
+AIRQ 2b
+AIRQ 2c
+AIRQ 2d
+AIRQ 2e
+AIRQ 2f
+AIRQ 30
+AIRQ 31
+AIRQ 32
+AIRQ 33
+AIRQ 34
+AIRQ 35
+AIRQ 36
+AIRQ 37
+AIRQ 38
+AIRQ 39
+AIRQ 3a
+AIRQ 3b
+AIRQ 3c
+AIRQ 3d
+AIRQ 3e
+AIRQ 3f
+
 _iv_irq0:
 .global _iv_irq0
 	pusha
@@ -599,6 +681,10 @@ _iv_irq15:
 	pusha
 	push $15
 	jmp _iv_irqload
+_iv_sti:
+.global _iv_sti
+	sti
+	ret
 _iv_irq_eoi:
 	cmp $8, %al
 	mov $0x20, %al
@@ -608,6 +694,12 @@ _iv_irq_eoi:
 	ret
 _iv_add_n:
 	incl _ivix_int_n
+	ret
+_iv_add_f:
+	incl _ivix_int_f
+	ret
+_iv_add_ac:
+	incl _ivix_int_ac
 	ret
 _iv_nothing:
 .global _iv_nothing
@@ -635,6 +727,12 @@ _ix_outl:
 	mov 4(%esp), %edx
 	mov 8(%esp), %eax
 	outl %eax, %dx
+	ret
+
+_ix_readmsr:
+	.global _ix_readmsr
+	mov 4(%esp), %ecx
+	rdmsr
 	ret
 
 _ix_loadcr3:
@@ -737,29 +835,30 @@ _ixa_cmpxchg:
 	ret
 
 _ix_makeidt:
-	movl $_ivix_idt, %edi
-	movl $_ivix_itb, %edx
-	movzxw 0(%edx), %ebx
-	add $2, %edx
-1:	movzxw 0(%edx), %eax
-	movzxw 2(%edx), %ecx
-	add $4, %edx
-	shl $3, %eax
-	movl $_ivix_itable, %esi
-	add %eax, %esi
-2:	movw 0(%esi), %ax	# scramble the values into the IDT entry format
-	movw %ax, 0(%edi)
-	movw 2(%esi), %ax
-	movw %ax, 6(%edi)
-	movw 4(%esi), %ax
-	movw %ax, 2(%edi)
-	movw 6(%esi), %ax
-	movw %ax, 4(%edi)
-	add $8, %edi
-	loop 2b
-	dec %ebx
-	and %ebx, %ebx
-	jne 1b
+	movl $_ivix_idt, %esi	# the IDT to fill
+	mov $0x100, %ecx
+	# itable descriptors are size 8
+	#movl $_ivix_itable, %esi
+	# IDT Descriptor:
+	# Offset is the virt-address (offset from CS base)
+	# word 0x0: offset(0..15)
+	# word 0x2: CS segment to use for interrupt
+	# word 0x4:
+	# [15|14 13|12 11|10 9 8] [7 6 5|4 3 2 1 0]
+	#  P   DPL   0  D  type    0 0 0  reserved
+	# P = Present, should be 1 for in-use descriptors
+	# DPL = Descriptor Privilege Level
+	#  checked by INT n, INT, INTO, aka software interrupts, #GP if violated
+	# D: 1 = 32 bit gate, 0 = 16 bit (for Interrupt/Trap gate, otherwise 0)
+	# Type: 5=task gate, 6 interrupt gate, 7 trap gate
+	# word 0x6: offset(16..31)
+1:
+	# scramble the values into the IDT entry format
+	movw 2(%esi), %ax	# exchange word 2 and 6
+	xchgw %ax, 6(%esi)
+	movw %ax, 2(%esi)
+	add $8, %esi
+	loop 1b
 	ret
 
 _ix_construct:
@@ -773,6 +872,7 @@ _ix_construct:
 	ret
 
 _ix_initpic:
+
 	# also setup the PIT, because why not
 	# byte: ccaa ooob
 	# cc = channel 0-2 or 3 readback
@@ -789,27 +889,37 @@ _ix_initpic:
 	mov $0x04, %al
 	out %al, $PIT_CH0
 	# setup the PICs
-	mov $0x11, %al
+	mov $0x11, %al	# initialize(ICW2 offset, ICW3 wired, ICW4)
 	out %al, $PIC1_CMD	# init the PICs
 	out %al, $PIC2_CMD
 	call RETN
-	mov $0x70, %al
+	mov $0x20, %al	# master's offset
 	out %al, $PIC1_DAT	# set offsets
-	mov $0x78, %al
+	mov $0x28, %al	# slave's offset
 	out %al, $PIC2_DAT
 	call RETN
-	mov $0x04, %al
+	mov $0x04, %al	# idk
 	out %al, $PIC1_DAT	# set cascades
 	mov $0x02, %al
 	out %al, $PIC2_DAT
 	call RETN
-	mov $0x01, %al
+	mov $0x01, %al	# 8086/88 mode... I guess
 	out %al, $PIC1_DAT	# set mode
 	out %al, $PIC2_DAT
 	call RETN
-	xor %ax, %ax
-	out %al, $PIC1_DAT	# set mask (allow all)
+	xor %eax, %eax		# allow all
+	out %al, $PIC1_DAT	# set mask
+	xor %eax, %eax
 	out %al, $PIC2_DAT
+	call RETN
+	call _apic_eoi
+	# disable?
+	mov $0xfe, %al
+	out %al, $PIC2_DAT
+	call RETN
+	mov $0xfb, %al
+	out %al, $PIC1_DAT
+	call RETN
 RETN:	ret
 
 _ix_totalhalt:	# totally halt the system. well, except if interrupts are on.
@@ -851,42 +961,11 @@ _ix_req:
 	movl %eax, 0x520
 	ret
 
-.data
+.section .idt
+
 .align 8
 _ivix_idt:	# the IDT itself
 .global _ivix_idt
-.fill 2048
-
-_ivix_gtable:
-.word 0
-
-.macro ITBENT fn=0,count=1
-.word \fn
-.word \count
-.endm
-.macro ITBARRY sfn=0,efn=0
-.word \sfn
-.word 1
-.if \efn-\sfn
-ITBARRY "(\sfn+1)",\efn
-.endif
-.endm
-
-_ivix_itb:	# how to build the IDT
-.word (_ivix_itb_end - _ivix_itb_start) >> 2	# count
-_ivix_itb_start:
-# 0 - 1f
-ITBARRY 0x00, 0x1f
-# 20 - 6f
-ITBENT 0x30, 0x50
-# 70 - 7f
-ITBARRY 0x20, 0x2f
-# 80 - ff
-ITBENT 0x30, 128
-_ivix_itb_end:
-
-.set KSEG, 0x10
-_ivix_itable:	# functions to use in IDT
 idt_int _ive_DE, KSEG
 idt_int _ive_DB, KSEG
 idt_int _ive_X2, KSEG
@@ -935,4 +1014,72 @@ idt_int _iv_irq12, KSEG
 idt_int _iv_irq13, KSEG
 idt_int _iv_irq14, KSEG
 idt_int _iv_irq15, KSEG	# 0x2f
+idt_int _iv_nothing, KSEG # 0x30
 idt_int _iv_nothing, KSEG
+idt_int _iv_nothing, KSEG
+idt_int _iv_nothing, KSEG # 0x33
+idt_int _iv_nothing, KSEG
+idt_int _iv_nothing, KSEG
+idt_int _iv_nothing, KSEG
+idt_int _iv_nothing, KSEG # 0x37
+idt_int _iv_nothing, KSEG
+idt_int _iv_nothing, KSEG
+idt_int _iv_nothing, KSEG
+idt_int _iv_nothing, KSEG # 0x3b
+idt_int _iv_nothing, KSEG
+idt_int _iv_nothing, KSEG
+idt_int _iv_nothing, KSEG
+idt_int _iv_nothing, KSEG # 0x3f
+idt_int _iv_airq20, KSEG # 0x40
+idt_int _iv_airq21, KSEG
+idt_int _iv_airq22, KSEG
+idt_int _iv_airq23, KSEG # 0x43
+idt_int _iv_airq24, KSEG
+idt_int _iv_airq25, KSEG
+idt_int _iv_airq26, KSEG
+idt_int _iv_airq27, KSEG # 0x47
+idt_int _iv_airq28, KSEG
+idt_int _iv_airq29, KSEG
+idt_int _iv_airq2a, KSEG
+idt_int _iv_airq2b, KSEG # 0x4b
+idt_int _iv_airq2c, KSEG
+idt_int _iv_airq2d, KSEG
+idt_int _iv_airq2e, KSEG
+idt_int _iv_airq2f, KSEG # 0x4f
+idt_int _iv_airq30, KSEG # 0x50
+idt_int _iv_airq31, KSEG
+idt_int _iv_airq32, KSEG
+idt_int _iv_airq33, KSEG # 0x53
+idt_int _iv_airq34, KSEG
+idt_int _iv_airq35, KSEG
+idt_int _iv_airq36, KSEG
+idt_int _iv_airq37, KSEG # 0x57
+idt_int _iv_airq38, KSEG
+idt_int _iv_airq39, KSEG
+idt_int _iv_airq3a, KSEG
+idt_int _iv_airq3b, KSEG # 0x5b
+idt_int _iv_airq3c, KSEG
+idt_int _iv_airq3d, KSEG
+idt_int _iv_airq3e, KSEG
+idt_int _iv_airq3f, KSEG # 0x5f
+.fill (0xf0 - 0x60), 8, 0
+idt_int _iv_nothing, KSEG # 0xf0
+idt_int _iv_nothing, KSEG
+idt_int _iv_nothing, KSEG
+idt_int _iv_nothing, KSEG # 0xf3
+idt_int _iv_nothing, KSEG
+idt_int _iv_nothing, KSEG
+idt_int _iv_nothing, KSEG
+idt_int _iv_nothing, KSEG # 0xf7
+idt_int _iv_nothing, KSEG
+idt_int _iv_nothing, KSEG
+idt_int _iv_nothing, KSEG
+idt_int _iv_nothing, KSEG # 0xfb
+idt_int _iv_nothing, KSEG
+idt_int _iv_nothing, KSEG
+idt_int _iv_apic_timer, KSEG
+idt_int _iv_apic_sv, KSEG # 0xff
+
+_ivix_gtable:
+.word 0
+
