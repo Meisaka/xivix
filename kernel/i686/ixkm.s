@@ -37,21 +37,19 @@ ixstk:
 
 .set KSEG, 0x10
 
-_ivix_idt_ptr:
+_iv_idt_ptr:
 .word 0x07ff
-.int _ivix_idt
+.int _iv_idt
 
-_ivix_gdt_ptr:
+_iv_gdt_ptr:
 .word 0x0100 * 8
 .int gdt_data	# linked externally
 
-_ivix_dump_n:
+_iv_int_n: .global _iv_int_n
 .int 0
-_ivix_int_n: .global _ivix_int_n
+_iv_int_f: .global _iv_int_f
 .int 0
-_ivix_int_f: .global _ivix_int_f
-.int 0
-_ivix_int_ac: .global _ivix_int_ac
+_iv_int_ac: .global _iv_int_ac
 .int 0
 
 .section .ixboot,"ax"
@@ -62,10 +60,10 @@ _ix_entry:
 	mov %edx, %edi	# save this for later
 	orl $0x1, %edx	# present flag
 	xor %eax, %eax	# high bits are zero
-	movl %edx, _ivix_phy_pdpt + 0x0 # map 0x0..
-	movl %eax, _ivix_phy_pdpt + 0x4
-	movl %edx, _ivix_phy_pdpt + 0x18 # map 0xC..
-	movl %eax, _ivix_phy_pdpt + 0x1c
+	movl %edx, _iv_phy_pdpt + 0x0 # map 0x0..
+	movl %eax, _iv_phy_pdpt + 0x4
+	movl %edx, _iv_phy_pdpt + 0x18 # map 0xC..
+	movl %eax, _iv_phy_pdpt + 0x1c
 	xor %edx, %edx
 	orl $0x83, %eax		# set flags on it 2M pages
 	movl %eax, (%edi)	# identity map 0 - 2M
@@ -76,7 +74,7 @@ _ix_entry:
 	movl %cr4, %eax # control bits
 	orl $0x20, %eax	# enable PAE
 	movl %eax, %cr4
-	leal _ivix_phy_pdpt, %eax	# load CR3 with the page table
+	leal _iv_phy_pdpt, %eax	# load CR3 with the page table
 	movl %eax, %cr3
 	movl %cr0, %eax
 	orl $0x80000000, %eax	# enable paging bit
@@ -84,10 +82,10 @@ _ix_entry:
 1:
 	jmp _kernel_entry
 .align 32
-_ivix_phy_pdpt:
-.global _ivix_phy_pdpt
-.set _ivix_pdpt, _ivix_phy_pdpt + 0xc0000000
-.global _ivix_pdpt
+_iv_phy_pdpt:
+.global _iv_phy_pdpt
+.set _iv_pdpt, _iv_phy_pdpt + 0xc0000000
+.global _iv_pdpt
 .fill 64, 2, 0xfe00
 
 .section .ctors.begin
@@ -104,9 +102,9 @@ _kernel_entry:
 	rep stosl %eax, (%edi)
 
 	mov $ixstk, %esp
-	lgdt _ivix_gdt_ptr	# load GDT
+	lgdt _iv_gdt_ptr	# load GDT
 	call _ix_makeidt	# make and load IDT
-	lidt _ivix_idt_ptr
+	lidt _iv_idt_ptr
 	call _ix_initpic	# configure the PIC
 
 	sub $0xc, %esp		# align the stack
@@ -116,10 +114,10 @@ _kernel_entry:
 	call _kernel_main	# jump to C/C++
 	jmp _ix_halt		# idle loop if we get here
 
-_iv_regdump:
-	call ixcom_putc_x
+_ix_regdump:
+	call ix_com_putc_x
 	movb $'+', %al
-	call ixcom_putc_x
+	call ix_com_putc_x
 	push %ebp
 	mov %esp, %ebp
 	lea 0x08(%esp), %ecx
@@ -149,7 +147,7 @@ _iv_regdump:
 	movl 0x0(%ecx), %ebx	# EDI
 	call puthex32
 	call putzstr
-	lea 0x2c(%esp), %ecx
+	lea 0x30(%esp), %ecx
 	movl 0x0(%ecx), %ebx	# EIP
 	call puthex32
 	call putzstr
@@ -170,7 +168,7 @@ _iv_regdump:
 2:	and %edi, %edi
 	je 3f
 	mov $10, %al
-	call ixcom_putc_x
+	call ix_com_putc_x
 	mov %esi, %ebx
 	call puthex32
 1:	mov 0(%esi), %ebx
@@ -209,7 +207,7 @@ puthex32:
 	jl 2f
 	add $7, %al
 2:	add $'0', %al
-	call ixcom_putc_x
+	call ix_com_putc_x
 	loop 1b
 	pop %ecx
 	ret
@@ -217,7 +215,7 @@ putzstr:
 1:	lodsb
 	test %al, %al
 	jz 1f
-	call ixcom_putc_x
+	call ix_com_putc_x
 	jmp 1b
 1:	ret
 
@@ -229,7 +227,7 @@ putzstr:
 .set COM_LS, COM_DATA + 5
 
 ix_initcom:
-.global ixcom_init
+.global ix_com_init
 	mov $0, %al
 	mov $COM_INTR, %dx
 	out %al, %dx
@@ -253,10 +251,10 @@ ix_initcom:
 	out %al, %dx
 	ret
 
-ixcom_putc:
-.global ixcom_putc
+ix_com_putc:
+.global ix_com_putc
 	movl 4(%esp), %eax
-ixcom_putc_x:
+ix_com_putc_x:
 	mov $COM_LS, %dx
 	mov %al, %ah
 1:	inb %dx, %al
@@ -269,228 +267,237 @@ ixcom_putc_x:
 	je 1f
 	ret
 1:	mov $13, %al
-	jmp ixcom_putc_x
+	jmp ix_com_putc_x
 
-ixcom_printz:
+ix_com_printz:
 1:	lodsb
 	test %al, %al
 	jz 1f
 	push %eax
-	call ixcom_putc
+	call ix_com_putc
 	pop %eax
 	jmp 1b
 1:	ret
 
-ixcom_hello:
-.global ixcom_hello
+ix_com_hello:
+#.global ix_com_hello
 	mov $_lc_hello, %esi
-	call ixcom_printz
+	call ix_com_printz
 	ret
 _lc_hello: .asciz "xivix hello\n"
 _lc_totalhalt: .asciz "totalhalt\n"
 
 _ix_ecentry:
 	call ix_initcom
-	call ixcom_hello
+	call ix_com_hello
 	ret
 
 __cxa_pure_virtual:
 .global __cxa_pure_virtual
 	push %cs
 	pushf
+	push $0
+	push $0
 	pusha
 	movw $0x0500+'V', %ax
-	call _iv_regdump
+	call _ix_regdump
 	call _ix_totalhalt
-_ive_DE:
-.global _ive_DE
+_ixe_DE:
+	push $0
 	pusha
 	movw $0x0500+'0', %ax
-	call _iv_regdump
+	call _ix_regdump
 	popa
+	add $8, %esp
 	iret
-_ive_DB:
-.global _ive_DB
+_ixe_DB:
+	push $0
 	pusha
 	movw $0x1C00+'1', %ax
-	call _iv_regdump
+	call _ix_regdump
 	popa
+	add $8, %esp
 	iret
-_ive_X2:
-.global _ive_X2
+_ixe_X2:
+	push $0
 	pusha
-	call _iv_regdump
+	call _ix_regdump
 	movw $0x1C00+'2', %ax
 	movw %ax, 0xC00B8082
 	popa
+	add $8, %esp
 	iret
-_ive_BP:
-.global _ive_BP
+_ixe_BP:
+	push $0
 	pusha
 	movw $0x1C00+'3', %ax
-	call _iv_regdump
+	call _ix_regdump
 	popa
+	add $8, %esp
 	iret
-_ive_OF:
-.global _ive_OF
+_ixe_OF:
+	push $0
 	pusha
 	movw $0x1C00+'4', %ax
-	call _iv_regdump
+	call _ix_regdump
 	popa
+	add $8, %esp
 	iret
-_ive_BR:
-.global _ive_BR
+_ixe_BR:
+	push $0
 	pusha
 	movw $0x1C00+'5', %ax
-	call _iv_regdump
+	call _ix_regdump
 	popa
+	add $8, %esp
 	iret
-_ive_UD:
-.global _ive_UD
+_ixe_UD:
+	push $0
 	pusha
 	movw $0x1C00+'6', %ax
-	call _iv_regdump
+	call _ix_regdump
 	call _ix_totalhalt
 	popa
+	add $8, %esp
 	iret
-_ive_NM:
-.global _ive_NM
+_ixe_NM:
+	push $0
 	pusha
 	movw $0x1C00+'7', %ax
-	call _iv_regdump
+	call _ix_regdump
 	popa
+	add $8, %esp
 	iret
-_ive_DF:
-.global _ive_DF
+_ixe_DF:
+	push $0
 	pusha
 	movw $0x6C00+'D', %ax
-	call _iv_regdump
+	call _ix_regdump
 	movw $0x6C00+'F', %ax
 	movw %ax, 0xC00B8084
 	call _ix_totalhalt
-_ive_X9:
-.global _ive_X9
+_ixe_X9:
+	push $0
 	pusha
 	movw $0x1C00+'9', %ax
-	call _iv_regdump
+	call _ix_regdump
 	popa
+	add $8, %esp
 	iret
-_ive_TS:
-.global _ive_TS
+_ixe_TS:
+	push $0
 	pusha
 	movw $0x1C00+'A', %ax
-	call _iv_regdump
+	call _ix_regdump
 	popa
+	add $8, %esp
 	iret
-_ive_NP:
-.global _ive_NP
+_ixe_NP:
+	push $0
 	pusha
 	movw $0x1C00+'B', %ax
-	call _iv_regdump
+	call _ix_regdump
 	popa
+	add $8, %esp
 	iret
-_ive_SS:
-.global _ive_SS
+_ixe_SS:
+	push $0
 	pusha
 	movw $0x1C00+'C', %ax
-	call _iv_regdump
+	call _ix_regdump
 	popa
+	add $8, %esp
 	iret
-_ive_GP:
-.global _ive_GP
+_ixe_GP:
+	push $0
 	pusha
 	mov %esp, %eax
 	push %eax
 	add $0x24, %eax
 	push %eax
 	movw $0x1C00+'G', %ax
-	call _iv_regdump
+	call _ix_regdump
 	movw $0x1C00+'P', %ax
 	movw %ax, 0xC00B8084
 	call _ix_totalhalt
 	popa
+	add $8, %esp
 	iret
-_ive_PF:
-.global _ive_PF
+# stack:
+# Hex,Item
+# +38 SS (would go here for CPL changes)
+# +34 ESP (would go here for CPL changes)
+# +30 EFLAGS
+# +2c CS
+# +28 EIP
+# +24 Error Code (Exceptions)
+# +20 extra code (i.e. CR2 for PF) else 0
+# +1C EAX
+# +18 ECX
+# +14 EDX
+# +10 EBX
+# +0C ESP (pointing to error code)
+# +08 EBP
+# +04 ESI
+# +00 EDI <- Where current ESP ends up pointing
+_ixe_PF:
+	push $0
 	pusha			# "new" page fault / debug code
 	movw $0x1C00+'P', %ax
-	call _iv_regdump
-	# stack:
-	# Hex,Item
-	# +34 SS (would go here for CPL changes)
-	# +30 ESP (would go here for CPL changes)
-	# +2C EFLAGS
-	# +28 CS
-	# +24 EIP
-	# +20 Error Code (Exceptions)
-	# +1C EAX
-	# +18 ECX
-	# +14 EDX
-	# +10 EBX
-	# +0C ESP (pointing to error code)
-	# +08 EBP
-	# +04 ESI
-	# +00 EDI <- Where current ESP ends up pointing
-	mov %esp, %eax
-	mov %eax, %edx
-	add $0x24, %edx
-	push %edx         # edx = ptr to EIP,CS,EFLAGS
-	push %eax         # eax = ptr to register dump
-	mov %cr2, %edx    # PF address
-	push %edx
-	mov 0x20(%eax), %edx # edx = error code
-	push %edx
-	mov %esp, %edx    # edx = ptr to all this stuff
+	call _ix_regdump
+	mov %esp, %edx
+	mov %cr2, %eax    # PF address
+	mov %eax, 0x20(%edx)
 	mov $0x0e, %eax
-	# +C ptr to EIP,CS,EFLAGS
-	# +8 ptr to registers
-	# +4 PF address
-	# +0 Error code (again) <- where edx points
 	# eax = 0x0E
 	# edx = ptr (above)
-	call _iv_exhload
+	call _ix_exhload
 	call _ix_totalhalt	# just stop
 	popa
-	add $4, %esp
+	add $8, %esp
 	iret
-_ive_X15:
-.global _ive_X15
+_ixe_X15:
+	push $0
 	pusha
 	movw $0x1C00+'F', %ax
-	call _iv_regdump
+	call _ix_regdump
 	popa
+	add $8, %esp
 	iret
-_ive_MF:
-.global _ive_MF
+_ixe_MF:
+	push $0
 	pusha
 	movw $0x1C00+'M', %ax
-	call _iv_regdump
+	call _ix_regdump
 	popa
+	add $8, %esp
 	iret
-_ive_AC:
-.global _ive_AC
+_ixe_AC:
+	push $0
 	pusha
 	movw $0x1C00+'L', %ax
-	call _iv_regdump
+	call _ix_regdump
 	popa
+	add $8, %esp
 	iret
-_ive_MC:
-.global _ive_MC
+_ixe_MC:
+	push $0
 	pusha
 	movw $0x1C00+'M', %ax
-	call _iv_regdump
+	call _ix_regdump
 	call _ix_totalhalt
-_ive_XM:
-.global _ive_XM
+_ixe_XM:
+	push $0
 	pusha
 	movw $0x1C00+'X', %ax
-	call _iv_regdump
+	call _ix_regdump
 	popa
+	add $8, %esp
 	iret
 
-_iv_exhload:
+_ix_exhload: # eax = Ex index, edx = context pointer
 	# edx holds struct ptr, eax holds exception#
-	lea ivix_except(,%eax,8), %esi # load address of ex handler info
+	lea iv_except(,%eax,8), %esi # load address of ex handler info
 	mov (%esi), %ebx    # get address
 	test %ebx, %ebx     # test if null
 	je 1f
@@ -503,79 +510,93 @@ _iv_exhload:
 	1:
 	ret
 
-_iv_irqload:
-	mov %esp, %edx
-	mov (%esp), %eax
-	lea ivix_interrupt(,%eax,8), %esi
-	mov (%esi), %ebx
+# IRQ handler: interrupt stack, push #pusha
+# 0x30 eflags
+# 0x2c cs
+# 0x28 eip
+# 0x24 pushed irq # <- entry ESP
+# 0x20 zero
+# 0x1c EAX
+# 0x18 ECX
+# 0x14 EDX
+# 0x10 EBX
+# 0x0c ESP (entry esp)
+# 0x08 EBP
+# 0x04 ESI
+# 0x00 EDI <- Where current ESP ends up pointing
+#
+_ix_apic_irq:
+	push $0
+	pusha
+	mov %esp, %edx	# registers
+	# check interrupt table for IRQ number
+	mov 0x24(%esp), %eax	# interrupt number
+	lea iv_interrupt(,%eax,8), %esi	# IntrDef structure
+	mov (%esi), %ebx	# ->entry (function ptr)
 	test %ebx, %ebx
-	je 1f
-	push %edx
-	push %eax
-	movl 4(%esi), %eax
-	push %eax
-	call *%ebx
-	add $12, %esp
-	1:
-	pop %eax
-	call _iv_irq_eoi
-	popa
-	iret
-
-_iv_apic_irq:
-	mov %esp, %edx	# check interrupt table for IRQ number
-	mov (%esp), %eax
-	lea ivix_interrupt(,%eax,8), %esi
-	mov (%esi), %ebx
-	test %ebx, %ebx	# if it has a handler, call it
-	je 1f
-	push %edx
-	push %eax
-	movl 4(%esi), %eax
+	je 1f	# if it has no handler, skip and return
+	push %edx	# pointer to registers
+	push %eax	# our interrupt number
+	movl 4(%esi), %eax	# ->rlocal (void *)
 	push %eax
 	call *%ebx
-	add $12, %esp
-1:
-	pop %eax
-	call _apic_eoi
-	popa
+	add $12, %esp	# clean up handler stack
+1:	mov 0x20(%esp), %eax	# interrupt number
+	cmp $0x10, %al	# if it's 0-15, call PIC EOI
+	jge 1f
+	call _ix_irq_eoi
+1:	call _apic_eoi
+	mov 0x24(%esp), %eax	# interrupt number
+	cmp $0x28, %al	# is it the timer?
+	jne 1f
+	push %esp	# attempt task switch on timer
+	call _Z24scheduler_from_interruptP6IntCtx
+	add $4, %esp	# if we didn't task switch
+1:	popa
+	add $8, %esp	# skip the pushed values
 	iret
 
-_iv_apic_timer:
+_ix_apic_svh:
 	pusha
-	push $0x40
-	call _iv_add_f
-	jmp _iv_apic_irq
-_iv_apic_sv:
-	pusha
-	push $0x41
-	call _iv_add_ac
 	call _apic_svh
-	jmp _iv_apic_irq
+	popa
+	ret
+
+_ix_apic_timer:
+	push $0x40
+	incl _iv_int_f
+	jmp _ix_apic_irq
+_ix_apic_sv:
+	push $0x41
+	incl _iv_int_ac
+	call _ix_apic_svh
+	jmp _ix_apic_irq
 
 .macro AIRQ num
-_iv_airq\num:
-	pusha
+_ix_airq\num:
 	push $0x\num
-	jmp _iv_apic_irq
+	jmp _ix_apic_irq
+.endm
+.macro LIRQ num
+_ix_irq\num:
+	push $0x\num
+	jmp _ix_apic_irq
 .endm
 AIRQ 20
 AIRQ 21
-_iv_airq22:
-	pusha
+_ix_airq22:
 	push $0x22
-	call _iv_add_n
-	jmp _iv_apic_irq
+	incl _iv_int_n
+	jmp _ix_apic_irq
 AIRQ 23
 AIRQ 24
 AIRQ 25
 AIRQ 26
 AIRQ 27
-_iv_airq28:
-	pusha
+_ix_airq28:
 	push $0x28
-	call _iv_add_ac
-	jmp _iv_apic_irq
+	incl _iv_int_ac
+	jmp _ix_apic_irq
 AIRQ 29
 AIRQ 2a
 AIRQ 2b
@@ -600,109 +621,43 @@ AIRQ 3d
 AIRQ 3e
 AIRQ 3f
 
-_iv_irq0:
-.global _iv_irq0
-	pusha
+_ix_irq00:
 	push $0
-	call _iv_add_n
-	jmp _iv_irqload
-_iv_irq1:
-.global _iv_irq1
-	pusha
-	push $1
-	jmp _iv_irqload
-_iv_irq2:
-.global _iv_irq2
-	pusha
-	push $2
-	jmp _iv_irqload
-_iv_irq3:
-.global _iv_irq3
-	pusha
-	push $3
-	jmp _iv_irqload
-_iv_irq4:
-.global _iv_irq4
-	pusha
-	push $4
-	jmp _iv_irqload
-_iv_irq5:
-.global _iv_irq5
-	pusha
-	push $5
-	jmp _iv_irqload
-_iv_irq6:
-.global _iv_irq6
-	pusha
-	push $6
-	jmp _iv_irqload
-_iv_irq7:
-.global _iv_irq7
-	pusha
-	push $7
-	jmp _iv_irqload
-_iv_irq8:
-.global _iv_irq8
-	pusha
-	push $8
-	jmp _iv_irqload
-_iv_irq9:
-.global _iv_irq9
-	pusha
-	push $9
-	jmp _iv_irqload
-_iv_irq10:
-.global _iv_irq10
-	pusha
-	push $10
-	jmp _iv_irqload
-_iv_irq11:
-.global _iv_irq11
-	pusha
-	push $11
-	jmp _iv_irqload
-_iv_irq12:
-.global _iv_irq12
-	pusha
-	push $12
-	jmp _iv_irqload
-_iv_irq13:
-.global _iv_irq13
-	pusha
-	push $13
-	jmp _iv_irqload
-_iv_irq14:
-.global _iv_irq14
-	pusha
-	push $14
-	jmp _iv_irqload
-_iv_irq15:
-.global _iv_irq15
-	pusha
-	push $15
-	jmp _iv_irqload
-_iv_sti:
-.global _iv_sti
+	incl _iv_int_n
+	jmp _ix_apic_irq
+LIRQ 01
+LIRQ 02
+LIRQ 03
+LIRQ 04
+LIRQ 05
+LIRQ 06
+LIRQ 07
+LIRQ 08
+LIRQ 09
+LIRQ 0a
+LIRQ 0b
+LIRQ 0c
+LIRQ 0d
+LIRQ 0e
+LIRQ 0f
+
+_ix_sti:
+.global _ix_sti
 	sti
 	ret
-_iv_irq_eoi:
+_ix_cli:
+.global _ix_cli
+	cli
+	ret
+_ix_irq_eoi:
 	cmp $8, %al
 	mov $0x20, %al
 	jl 1f
 	out %al, $PIC2_CMD
 1:	out %al, $PIC1_CMD
 	ret
-_iv_add_n:
-	incl _ivix_int_n
-	ret
-_iv_add_f:
-	incl _ivix_int_f
-	ret
-_iv_add_ac:
-	incl _ivix_int_ac
-	ret
-_iv_nothing:
-.global _iv_nothing
+_ix_nothing:
+.global _ix_nothing
 	iret
 
 _ix_outb:
@@ -823,22 +778,182 @@ _ixa_xchg:
 	lock xchg %eax, (%edx)
 	ret
 
+_ixa_xcmpxchg:
+	.global _ixa_xcmpxchg
+	.type _ixa_xcmpxchg,@function
+	push %ebp
+	mov %esp, %ebp
+	push %ebx
+	push %ecx
+	xor %ecx, %ecx
+	mov 0x8(%ebp), %edx	# where to compare
+	mov 0xc(%ebp), %eax	# what to compare
+	mov 0x10(%ebp), %ebx # stored when we compare
+	lock cmpxchg %ebx, (%edx)
+	mov 0x14(%ebp), %edx # get result pointer
+	mov %eax, (%edx) # save
+	jne 1f
+	inc %ecx
+1:	pop %eax
+	xchg %eax, %ecx
+	pop %ebx
+	pop %ebp
+	ret
+
 _ixa_cmpxchg:
 	.global _ixa_cmpxchg
 	.type _ixa_cmpxchg,@function
 	push %ebp
-	mov 0x8(%esp), %edx
-	mov 0xc(%esp), %eax
-	mov 0x10(%esp), %ebp
-	lock cmpxchg %ebp, (%edx)
+	mov %esp, %ebp
+	push %ebx
+	push %ecx
+	xor %ecx, %ecx
+	mov 0x8(%ebp), %edx	# where to compare
+	mov 0xc(%ebp), %eax	# what to compare
+	mov 0x10(%ebp), %ebx # stored when we compare
+	lock cmpxchg %ebx, (%edx)
+	jne 1f
+	inc %ecx
+1:	mov %ecx, %eax
+	pop %ecx
+	pop %ebx
 	pop %ebp
 	ret
 
+_ix_eflags:
+	.global _ix_eflags
+	.type _ix_eflags,@function
+	pushf
+	pop %eax
+	ret
+
+# +0x34 ... <- procedure stack pointer
+# 0x30 eflags
+# 0x2c cs
+# 0x28 eip
+# 0x24 pushed irq
+# 0x20 zero
+# 0x1c EAX
+# 0x18 ECX
+# 0x14 EDX
+# 0x10 EBX
+# 0x0c ESP
+# 0x08 EBP
+# 0x04 ESI
+# 0x00 EDI <- context pointer
+
+# reg save
+# 0x28 eflags
+# 0x24 cs
+# 0x20 eip
+# 0x1c EAX
+# 0x18 ECX
+# 0x14 EDX
+# 0x10 EBX
+# 0x0c ESP
+# 0x08 EBP
+# 0x04 ESI
+# 0x00 EDI <- context pointer
+
+# void _ix_task_switch_from_int(ixintctx *, TaskBlock *save, TaskBlock *to);
+_ix_task_switch_from_int:
+	.global _ix_task_switch_from_int
+	.type _ix_task_switch_from_int,@function
+	pop %eax	# drop return address (don't need it)
+	pop %ecx	# interrupt context
+	pop %esi	# save task
+	pop %edi	# destination task
+	mov 0x00(%ecx), %eax	# save EDI from int
+	mov %eax, 0x00(%esi)
+	mov 0x04(%ecx), %eax	# save ESI from int
+	mov %eax, 0x04(%esi)
+	mov 0x08(%ecx), %eax	# save EBP from int
+	mov %eax, 0x08(%esi)
+	mov 0x10(%ecx), %eax	# save EBX from int
+	mov %eax, 0x10(%esi)
+	mov 0x14(%ecx), %eax	# save EDX from int
+	mov %eax, 0x14(%esi)
+	mov 0x18(%ecx), %eax	# save ECX from int
+	mov %eax, 0x18(%esi)
+	mov 0x1c(%ecx), %eax	# save EAX from int
+	mov %eax, 0x1c(%esi)
+	# 20 and 24 are extra codes
+	# eip, cs, eflags (for interrupt)
+	mov 0x28(%ecx), %eax	# int->EIP
+	mov %eax, 0x20(%esi)	# save->r_eip
+	mov 0x2c(%ecx), %eax	# int->CS
+	mov %eax, 0x24(%esi)	# save->r_cs
+	mov 0x30(%ecx), %eax	# int->EFlags
+	mov %eax, 0x28(%esi)	# save->r_eflags
+	add $0x34, %ecx			# before interrupt context
+	# TODO for user space:
+	# extra items will exist on the stack
+	mov %ecx, 0x0c(%esi)	# save->r_esp
+	
+	# TODO use kernel stack for user space tasks
+	mov 0x0c(%edi), %esp	# to->r_esp
+	mov 0x28(%edi), %eax	# to->r_eflags
+	push %eax
+	mov 0x24(%edi), %eax	# to->r_cs TODO double check this later on
+	push %eax
+	mov 0x20(%edi), %eax	# to->r_eip
+	push %eax
+	mov 0x04(%edi), %esi	# save ESI from int
+	mov 0x08(%edi), %ebp	# save EBP from int
+	mov 0x10(%edi), %ebx	# save EBX from int
+	mov 0x14(%edi), %edx	# save EDX from int
+	mov 0x18(%edi), %ecx	# save ECX from int
+	mov 0x1c(%edi), %eax	# save EAX from int
+	mov 0x00(%edi), %edi	# save EDI from int
+	iret
+
+_ix_task_switch:
+	.global _ix_task_switch
+	.type _ix_task_switch,@function
+	push %ebp
+	mov %esp, %ebp
+	mov 0x8(%ebp), %eax
+	mov %edi, 0x00(%eax)
+	mov %esi, 0x04(%eax)
+	mov %ebx, 0x10(%eax)
+	mov %edx, 0x14(%eax)
+	mov %ecx, 0x18(%eax)
+	mov %eax, %ecx
+	#mov %eax, 0x1c(%eax) # unused here
+	pushf
+	pop %eax
+	mov %eax, 0x28(%ecx) # save flags
+	mov 0xc(%ebp), %edx # get the "to" pointer
+	pop %ebp	# saved ebp
+	mov %ebp, 0x08(%ecx) # save the last ebp
+	pop %ebp	# return address
+	mov %ebp, 0x20(%ecx)	# save return to EIP
+	movl $0x10, 0x24(%ecx)	# CS save (unused)
+	mov %esp, 0x0c(%ecx)	# save the "from" stack
+	# all of "from" is saved
+	# EDX is the "to" pointer
+	cli
+	mov 0x00(%edx), %edi
+	mov 0x04(%edx), %esi
+	mov 0x08(%edx), %ebp
+	mov 0x0c(%edx), %esp	# stack of the procedure
+	mov 0x10(%edx), %ebx
+	mov 0x18(%edx), %ecx
+	mov 0x28(%edx), %eax	# eflags
+	push %eax
+	mov 0x24(%edx), %eax	# to->r_cs TODO double check this later on
+	push %eax
+	mov 0x20(%edx), %eax	# EIP save
+	push %eax
+	mov 0x1c(%edx), %eax	# eax save
+	mov 0x14(%edx), %edx	# edx save
+	iret	# return to the "to" task
+
 _ix_makeidt:
-	movl $_ivix_idt, %esi	# the IDT to fill
+	movl $_iv_idt, %esi	# the IDT to fill
 	mov $0x100, %ecx
 	# itable descriptors are size 8
-	#movl $_ivix_itable, %esi
+	#movl $_iv_itable, %esi
 	# IDT Descriptor:
 	# Offset is the virt-address (offset from CS base)
 	# word 0x0: offset(0..15)
@@ -927,7 +1042,7 @@ _ix_totalhalt:	# totally halt the system. well, except if interrupts are on.
 	mov %eax, %ebx
 	call puthex32
 	mov $_lc_totalhalt, %esi
-	call ixcom_printz
+	call ix_com_printz
 	mov 0(%esp), %ebx
 	call puthex32
 	cli
@@ -964,122 +1079,122 @@ _ix_req:
 .section .idt
 
 .align 8
-_ivix_idt:	# the IDT itself
-.global _ivix_idt
-idt_int _ive_DE, KSEG
-idt_int _ive_DB, KSEG
-idt_int _ive_X2, KSEG
-idt_int _ive_BP, KSEG	# 3
-idt_int _ive_OF, KSEG
-idt_int _ive_BR, KSEG
-idt_int _ive_UD, KSEG
-idt_int _ive_NM, KSEG	# 7
-idt_int _ive_DF, KSEG
-idt_int _ive_X9, KSEG
-idt_int _ive_TS, KSEG
-idt_int _ive_NP, KSEG	# 0x0b
-idt_int _ive_SS, KSEG
-idt_int _ive_GP, KSEG
-idt_int _ive_PF, KSEG
-idt_int _ive_X15, KSEG	# 0x0f
-idt_int _ive_MF, KSEG
-idt_int _ive_AC, KSEG
-idt_int _ive_MC, KSEG
-idt_int _ive_XM, KSEG	# 0x13
-idt_int _iv_nothing, KSEG
-idt_int _iv_nothing, KSEG
-idt_int _iv_nothing, KSEG
-idt_int _iv_nothing, KSEG	# 0x17
-idt_int _iv_nothing, KSEG
-idt_int _iv_nothing, KSEG
-idt_int _iv_nothing, KSEG
-idt_int _iv_nothing, KSEG	# 0x1b
-idt_int _iv_nothing, KSEG
-idt_int _iv_nothing, KSEG
-idt_int _iv_nothing, KSEG
-idt_int _iv_nothing, KSEG	# 0x1f
-idt_int _iv_irq0, KSEG	# 0x20
-idt_int _iv_irq1, KSEG
-idt_int _iv_irq2, KSEG
-idt_int _iv_irq3, KSEG	# 0x23
-idt_int _iv_irq4, KSEG
-idt_int _iv_irq5, KSEG
-idt_int _iv_irq6, KSEG
-idt_int _iv_irq7, KSEG	# 0x27
-idt_int _iv_irq8, KSEG
-idt_int _iv_irq9, KSEG
-idt_int _iv_irq10, KSEG
-idt_int _iv_irq11, KSEG	# 0x2b
-idt_int _iv_irq12, KSEG
-idt_int _iv_irq13, KSEG
-idt_int _iv_irq14, KSEG
-idt_int _iv_irq15, KSEG	# 0x2f
-idt_int _iv_nothing, KSEG # 0x30
-idt_int _iv_nothing, KSEG
-idt_int _iv_nothing, KSEG
-idt_int _iv_nothing, KSEG # 0x33
-idt_int _iv_nothing, KSEG
-idt_int _iv_nothing, KSEG
-idt_int _iv_nothing, KSEG
-idt_int _iv_nothing, KSEG # 0x37
-idt_int _iv_nothing, KSEG
-idt_int _iv_nothing, KSEG
-idt_int _iv_nothing, KSEG
-idt_int _iv_nothing, KSEG # 0x3b
-idt_int _iv_nothing, KSEG
-idt_int _iv_nothing, KSEG
-idt_int _iv_nothing, KSEG
-idt_int _iv_nothing, KSEG # 0x3f
-idt_int _iv_airq20, KSEG # 0x40
-idt_int _iv_airq21, KSEG
-idt_int _iv_airq22, KSEG
-idt_int _iv_airq23, KSEG # 0x43
-idt_int _iv_airq24, KSEG
-idt_int _iv_airq25, KSEG
-idt_int _iv_airq26, KSEG
-idt_int _iv_airq27, KSEG # 0x47
-idt_int _iv_airq28, KSEG
-idt_int _iv_airq29, KSEG
-idt_int _iv_airq2a, KSEG
-idt_int _iv_airq2b, KSEG # 0x4b
-idt_int _iv_airq2c, KSEG
-idt_int _iv_airq2d, KSEG
-idt_int _iv_airq2e, KSEG
-idt_int _iv_airq2f, KSEG # 0x4f
-idt_int _iv_airq30, KSEG # 0x50
-idt_int _iv_airq31, KSEG
-idt_int _iv_airq32, KSEG
-idt_int _iv_airq33, KSEG # 0x53
-idt_int _iv_airq34, KSEG
-idt_int _iv_airq35, KSEG
-idt_int _iv_airq36, KSEG
-idt_int _iv_airq37, KSEG # 0x57
-idt_int _iv_airq38, KSEG
-idt_int _iv_airq39, KSEG
-idt_int _iv_airq3a, KSEG
-idt_int _iv_airq3b, KSEG # 0x5b
-idt_int _iv_airq3c, KSEG
-idt_int _iv_airq3d, KSEG
-idt_int _iv_airq3e, KSEG
-idt_int _iv_airq3f, KSEG # 0x5f
+_iv_idt:	# the IDT itself
+.global _iv_idt
+idt_int _ixe_DE, KSEG
+idt_int _ixe_DB, KSEG
+idt_int _ixe_X2, KSEG
+idt_int _ixe_BP, KSEG	# 3
+idt_int _ixe_OF, KSEG
+idt_int _ixe_BR, KSEG
+idt_int _ixe_UD, KSEG
+idt_int _ixe_NM, KSEG	# 7
+idt_int _ixe_DF, KSEG
+idt_int _ixe_X9, KSEG
+idt_int _ixe_TS, KSEG
+idt_int _ixe_NP, KSEG	# 0x0b
+idt_int _ixe_SS, KSEG
+idt_int _ixe_GP, KSEG
+idt_int _ixe_PF, KSEG
+idt_int _ixe_X15, KSEG	# 0x0f
+idt_int _ixe_MF, KSEG
+idt_int _ixe_AC, KSEG
+idt_int _ixe_MC, KSEG
+idt_int _ixe_XM, KSEG	# 0x13
+idt_int _ix_nothing, KSEG
+idt_int _ix_nothing, KSEG
+idt_int _ix_nothing, KSEG
+idt_int _ix_nothing, KSEG	# 0x17
+idt_int _ix_nothing, KSEG
+idt_int _ix_nothing, KSEG
+idt_int _ix_nothing, KSEG
+idt_int _ix_nothing, KSEG	# 0x1b
+idt_int _ix_nothing, KSEG
+idt_int _ix_nothing, KSEG
+idt_int _ix_nothing, KSEG
+idt_int _ix_nothing, KSEG	# 0x1f
+idt_int _ix_irq00, KSEG	# 0x20
+idt_int _ix_irq01, KSEG
+idt_int _ix_irq02, KSEG
+idt_int _ix_irq03, KSEG	# 0x23
+idt_int _ix_irq04, KSEG
+idt_int _ix_irq05, KSEG
+idt_int _ix_irq06, KSEG
+idt_int _ix_irq07, KSEG	# 0x27
+idt_int _ix_irq08, KSEG
+idt_int _ix_irq09, KSEG
+idt_int _ix_irq0a, KSEG
+idt_int _ix_irq0b, KSEG	# 0x2b
+idt_int _ix_irq0c, KSEG
+idt_int _ix_irq0d, KSEG
+idt_int _ix_irq0e, KSEG
+idt_int _ix_irq0f, KSEG	# 0x2f
+idt_int _ix_nothing, KSEG # 0x30
+idt_int _ix_nothing, KSEG
+idt_int _ix_nothing, KSEG
+idt_int _ix_nothing, KSEG # 0x33
+idt_int _ix_nothing, KSEG
+idt_int _ix_nothing, KSEG
+idt_int _ix_nothing, KSEG
+idt_int _ix_nothing, KSEG # 0x37
+idt_int _ix_nothing, KSEG
+idt_int _ix_nothing, KSEG
+idt_int _ix_nothing, KSEG
+idt_int _ix_nothing, KSEG # 0x3b
+idt_int _ix_nothing, KSEG
+idt_int _ix_nothing, KSEG
+idt_int _ix_nothing, KSEG
+idt_int _ix_nothing, KSEG # 0x3f
+idt_int _ix_airq20, KSEG # 0x40
+idt_int _ix_airq21, KSEG
+idt_int _ix_airq22, KSEG
+idt_int _ix_airq23, KSEG # 0x43
+idt_int _ix_airq24, KSEG
+idt_int _ix_airq25, KSEG
+idt_int _ix_airq26, KSEG
+idt_int _ix_airq27, KSEG # 0x47
+idt_int _ix_airq28, KSEG
+idt_int _ix_airq29, KSEG
+idt_int _ix_airq2a, KSEG
+idt_int _ix_airq2b, KSEG # 0x4b
+idt_int _ix_airq2c, KSEG
+idt_int _ix_airq2d, KSEG
+idt_int _ix_airq2e, KSEG
+idt_int _ix_airq2f, KSEG # 0x4f
+idt_int _ix_airq30, KSEG # 0x50
+idt_int _ix_airq31, KSEG
+idt_int _ix_airq32, KSEG
+idt_int _ix_airq33, KSEG # 0x53
+idt_int _ix_airq34, KSEG
+idt_int _ix_airq35, KSEG
+idt_int _ix_airq36, KSEG
+idt_int _ix_airq37, KSEG # 0x57
+idt_int _ix_airq38, KSEG
+idt_int _ix_airq39, KSEG
+idt_int _ix_airq3a, KSEG
+idt_int _ix_airq3b, KSEG # 0x5b
+idt_int _ix_airq3c, KSEG
+idt_int _ix_airq3d, KSEG
+idt_int _ix_airq3e, KSEG
+idt_int _ix_airq3f, KSEG # 0x5f
 .fill (0xf0 - 0x60), 8, 0
-idt_int _iv_nothing, KSEG # 0xf0
-idt_int _iv_nothing, KSEG
-idt_int _iv_nothing, KSEG
-idt_int _iv_nothing, KSEG # 0xf3
-idt_int _iv_nothing, KSEG
-idt_int _iv_nothing, KSEG
-idt_int _iv_nothing, KSEG
-idt_int _iv_nothing, KSEG # 0xf7
-idt_int _iv_nothing, KSEG
-idt_int _iv_nothing, KSEG
-idt_int _iv_nothing, KSEG
-idt_int _iv_nothing, KSEG # 0xfb
-idt_int _iv_nothing, KSEG
-idt_int _iv_nothing, KSEG
-idt_int _iv_apic_timer, KSEG
-idt_int _iv_apic_sv, KSEG # 0xff
+idt_int _ix_nothing, KSEG # 0xf0
+idt_int _ix_nothing, KSEG
+idt_int _ix_nothing, KSEG
+idt_int _ix_nothing, KSEG # 0xf3
+idt_int _ix_nothing, KSEG
+idt_int _ix_nothing, KSEG
+idt_int _ix_nothing, KSEG
+idt_int _ix_nothing, KSEG # 0xf7
+idt_int _ix_nothing, KSEG
+idt_int _ix_nothing, KSEG
+idt_int _ix_nothing, KSEG
+idt_int _ix_nothing, KSEG # 0xfb
+idt_int _ix_nothing, KSEG
+idt_int _ix_nothing, KSEG
+idt_int _ix_apic_timer, KSEG
+idt_int _ix_apic_sv, KSEG # 0xff
 
-_ivix_gtable:
+_iv_gtable:
 .word 0
 

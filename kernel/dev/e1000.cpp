@@ -299,7 +299,7 @@ struct e1000::DESC_PAGE {
 };
 #pragma pack(pop)
 
-void e1000_intcall(void * u, uint32_t, ixintrctx *) {
+void e1000_intcall(void * u, uint32_t, IntCtx *) {
 	if(u) {
 		((e1000*)u)->handle_int();
 	}
@@ -308,8 +308,8 @@ void e1000_intcall(void * u, uint32_t, ixintrctx *) {
 uint32_t e1000::handle_int() {
 	uint32_t its = vio[0xc0];
 	_ixa_or(&lastint, its);
-	uint32_t itt = _ivix_int_n;
-	junk_register += its + _ivix_int_n - last_itime;
+	uint32_t itt = _iv_int_n;
+	junk_register += its + _iv_int_n - last_itime;
 	last_itime = itt;
 	junk_register += vio[0x2810];
 	junk_register += vio[0x3810];
@@ -335,7 +335,7 @@ e1000::e1000(pci::PCIBlock &pcib) {
 	for(size_t n = 0; n < (descpage_size / sizeof(size_t)); n++) {
 		vp[n] = 0;
 	}
-	ivix_interrupt[40 + pcib.info.int_line] = { .entry = e1000_intcall, .rlocal = this };
+	iv_interrupt[40 + pcib.info.int_line] = { .entry = e1000_intcall, .rlocal = this };
 }
 
 e1000::~e1000() {

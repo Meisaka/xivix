@@ -70,8 +70,8 @@ struct MemMap {
 };
 
 extern "C" {
-extern uint8_t _ivix_phy_pdpt;
-extern PageDirPtr _ivix_pdpt;
+extern uint8_t _iv_phy_pdpt;
+extern PageDirPtr _iv_pdpt;
 extern char _kernel_start;
 extern char _kernel_end;
 extern char _kernel_load;
@@ -830,7 +830,7 @@ void load_memmap() {
 
 void initialize() {
 	xiv::print("Starting memory manager.\n");
-	pdpt = &_ivix_pdpt; // get the address of the directory pointer table
+	pdpt = &_iv_pdpt; // get the address of the directory pointer table
 	uintptr_t kv_start = (uintptr_t)&_kernel_start;
 	uintptr_t kp_start = (uintptr_t)&_kernel_load;
 	uintptr_t kv_end = (uintptr_t)&_kernel_end;
@@ -883,7 +883,7 @@ void initialize() {
 		pdpt->pdtpe[i] = ( ((uint32_t)(pdpt->pgdir[i])) - phyptr ) | Present;
 		xiv::printf("PDP %d: %010lx\n", i, pdpt->pdtpe[i]);
 	}
-	_ix_loadcr3((uint32_t)&_ivix_phy_pdpt); // reload page tables
+	_ix_loadcr3((uint32_t)&_iv_phy_pdpt); // reload page tables
 	xiv::printf("Page directories mapped\n");
 	for(int i = 0; i < 512; i++) {
 		pdpt->pgdir[0]->set(i, 0, NotPresent);
@@ -954,7 +954,7 @@ static void map_page(phyaddr_t phy, uintptr_t t, uint64_t f) {
 		xiv::printf("%x", (size_t)&dirptr->entry[ofs_d]);
 		dirptr->set(ofs_d, phy.m, Present, Large, (PageFlags)(f & (Writable | Usermode)));
 		xiv::printf(" map_page %x = ((%x))\n", t, dirptr->entry[ofs_d]);
-		_ix_loadcr3((uint32_t)&_ivix_phy_pdpt); // reset page tables
+		_ix_loadcr3((uint32_t)&_iv_phy_pdpt); // reset page tables
 	} else {
 		uint64_t tablebase = dirptr->entry[ofs_d];
 		// TODO if(tablebase) not present or present large page
@@ -989,7 +989,7 @@ static void map_page(phyaddr_t phy, uintptr_t t, uint64_t f) {
 			if((tablebase & Present) == 0) {
 				// XXX xiv::print("map pagetable\n");
 				dirptr->set(ofs_d, translate_page((uintptr_t)pdi->get(ofs_d)), Present, Writable);
-				_ix_loadcr3((uint32_t)&_ivix_phy_pdpt); // reset page tables
+				_ix_loadcr3((uint32_t)&_iv_phy_pdpt); // reset page tables
 			}
 			//xiv::printf("/map %0x=%0x>%0lx\n", ptptr, t, phy.m);
 			ptptr->pte[ofs_t] = phy.m | Present | (f & 0x1f);

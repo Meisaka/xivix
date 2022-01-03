@@ -17,8 +17,6 @@ extern char _kernel_load;
 
 size_t const phyptr = ((&_kernel_start) - (&_kernel_load));
 
-extern "C" void _iv_sti();
-
 namespace acpi {
 
 struct RSDPDescriptor1 {
@@ -322,7 +320,7 @@ void load_madt(const MADT *madt_base) {
 	if(ioapic_phy != 0) {
 		io_apic.init(ioapic_phy);
 	}
-	_iv_sti(); // interrupts on
+	_ix_sti(); // interrupts on
 }
 
 const RSDPDescriptor12 *rsdpd = nullptr;

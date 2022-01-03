@@ -11,7 +11,7 @@
 
 #pragma pack(push, 1)
 
-struct ixregfile {
+struct RegFile {
 	uint32_t r_edi;
 	uint32_t r_esi;
 	uint32_t r_ebp;
@@ -22,26 +22,41 @@ struct ixregfile {
 	uint32_t r_eax;
 };
 
-struct ixintrhead {
+struct BaseRegisterSave {
+	uint32_t r_edi;
+	uint32_t r_esi;
+	uint32_t r_ebp;
+	uint32_t r_esp;
+	uint32_t r_ebx;
+	uint32_t r_edx;
+	uint32_t r_ecx;
+	uint32_t r_eax;
+	uint32_t r_eip;
+	uint32_t r_cs;
+	uint32_t r_eflags;
+};
+
+struct IntHead {
 	uint32_t r_eip;
 	uint32_t r_cs;
 	uint32_t r_eflag;
 };
 
-struct ixintrctx {
-	ixregfile r;
-	ixintrhead ih;
+struct IntCtx {
+	RegFile ir;
+	uint32_t extra;
+	union {
+		uint32_t ecode;
+		uint32_t interrupt_index;
+	};
+	IntHead ih;
 };
 
-struct ixexptctx {
-	uint32_t ec_1;
-	uint32_t ec_2;
-	ixregfile *ir;
-	ixintrhead *ih;
-};
+typedef void (*InterruptHandle)(void *, uint32_t, IntCtx *);
+typedef void (*ExceptionHandle)(void *, uint32_t, IntCtx *);
 
-typedef void (*InterruptHandle)(void *, uint32_t, ixintrctx *);
-typedef void (*ExceptionHandle)(void *, uint32_t, ixexptctx *);
+//__attribute__((noreturn))
+void scheduler_from_interrupt(IntCtx *);
 
 struct IntrDef {
 	InterruptHandle entry;
@@ -54,8 +69,8 @@ struct ExceptDef {
 
 #pragma pack(pop)
 
-extern "C" IntrDef ivix_interrupt[66];
-extern "C" ExceptDef ivix_except[32];
+extern "C" IntrDef iv_interrupt[66];
+extern "C" ExceptDef iv_except[32];
 
 #endif
 

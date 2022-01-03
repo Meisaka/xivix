@@ -7,7 +7,6 @@
 
 #include "interrupt.hpp"
 
-
-IntrDef ivix_interrupt[66];
-ExceptDef ivix_except[32];
+IntrDef iv_interrupt[66];
+ExceptDef iv_except[32];
 

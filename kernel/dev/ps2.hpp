@@ -96,8 +96,8 @@ class PS2 : public Hardware, public MultiPort, public MultiPortService {
 private:
 	uint32_t kmd_q[16];
 	uint32_t kmd_l;
-	static void irq1_signal(void *, uint32_t, ixintrctx*);
-	static void irq12_signal(void *, uint32_t, ixintrctx*);
+	static void irq1_signal(void *, uint32_t, IntCtx*);
+	static void irq12_signal(void *, uint32_t, IntCtx*);
 	void irq1_handle();
 	void irq12_handle();
 	uint8_t ps2_get_read();

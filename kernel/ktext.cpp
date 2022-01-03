@@ -21,7 +21,7 @@ void togglecomm() {
 	use_comm = !use_comm;
 }
 void putc(char c) {
-	if(use_comm) ixcom_putc(c);
+	if(use_comm) ix_com_putc(c);
 	if(txtout == nullptr) return;
 	switch(c) {
 	case 10:

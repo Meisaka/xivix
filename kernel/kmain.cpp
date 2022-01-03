@@ -17,6 +17,7 @@
 
 #include "memory.hpp"
 #include "acpi.hpp"
+#include "scheduler.hpp"
 
 #include <stdarg.h>
 
@@ -45,6 +46,31 @@ size_t strlen(char *p) {
 	while(*p != 0) r++;
 	return r;
 }
+void memset(void *dst, int ivalue, size_t len) {
+	uint32_t value = (ivalue & 0xffu) * 0x1010101u;
+	uint8_t *dest_bytes = (uint8_t*)dst;
+	void *end = dest_bytes + len;
+	if(len < 16) {
+		while(dest_bytes < end) *(dest_bytes++) = value & 0xff;
+		return;
+	}
+	uint32_t align = ((uintptr_t)dest_bytes) & 0xf;
+	if(align & 0x3) {
+		for(size_t n = 0; n < (4 - (align & 3)); n++) {
+			*(dest_bytes++) = value & 0xff;
+		}
+	}
+	uint32_t *dest32 = (uint32_t*)dest_bytes;
+	uint32_t *end32 = (uint32_t*)(((uintptr_t)end) & ~0x3);
+	while(dest32 < end32) {
+		*(dest32++) = value;
+	}
+	dest_bytes = (uint8_t*)dest32;
+	while(dest_bytes < end) {
+		*(dest_bytes++) = value & 0xff;
+	}
+}
+
 } // extern C
 
 namespace xiv {
@@ -195,11 +221,16 @@ FramebufferText *fbt_status;
 VGAText lvga;
 hw::Keyboard *kb1;
 hw::Mouse *mou1;
+static hw::PS2 *psys;
+static uint32_t *vid = nullptr;
+static uint32_t vid_stride = 0;
+Scheduler scheduler;
 constexpr int cmdlen = 4096;
 int cmdx = 0, cmdl = 0;
 char *cmd;
 uint32_t nxf;
 bool flk = false;
+void kernel_loop();
 
 net::sockaddr test_sock { 0, 0x0100, 0xffffffff };
 void handle_key() {
@@ -216,6 +247,9 @@ void handle_key() {
 			cmdx = cmdl;
 		} else if(cmdx == 1) {
 			switch(cmd[0]) {
+			case '!':
+				scheduler.run();
+				break;
 			case 'D':
 				mem::debug(4);
 				break;
@@ -226,54 +260,15 @@ void handle_key() {
 				xiv::printf("CMOS timer count=%x\n", hw::CMOS::instance.timer);
 				break;
 			case 't':
-				xiv::printf("timer count=%x\n", _ivix_int_n);
+				xiv::printf("timer count=%x\n", _iv_int_n);
 				break;
 			case 'a':
-				xiv::printf("APIC count=%x\n", _ivix_int_ac);
-				break;
-			case 's':
-				{
-				char * leak=(char*)kmalloc(0x800);
-				if(!leak) { xiv::printf("Allocation failed\n"); break; }
-				for(int ux = 0; ux < 0x800; ux++) leak[ux] = 0x55;
-				mem::debug(0);
-				}
-				break;
-			case 'S':
-				for(int mux = 0; mux < 128; mux++) {
-				char * leak=(char*)kmalloc(0x800);
-				if(!leak) { xiv::printf("Allocation failed\n"); break; }
-				for(int ux = 0; ux < 0x800; ux++) leak[ux] = 0x55;
-				}
-				mem::debug(3);
+				xiv::printf("APIC count=%x\n", _iv_int_ac);
 				break;
 			case 'w':
 				if(hw::ethdev)
 					net::send_string_udp(9001, &test_sock, "Xivix network test message\n");
 				else xiv::printf("No network dev\n");
-				break;
-			case 'h':
-				{
-				char * leak=(char*)kmalloc(0x1000000);
-				for(int ux = 0; ux < 0x1000000; ux++) leak[ux] = 0xAA;
-				}
-				mem::debug(3);
-				break;
-			case 'l':
-				{
-				char * leak=(char*)kmalloc(0x10000);
-				if(!leak) { xiv::printf("Allocation failed\n"); break; }
-				for(int ux = 0; ux < 0x10000; ux++) leak[ux] = 0xfe;
-				}
-				mem::debug(3);
-				break;
-			case 'L':
-				{
-				char * leak=(char*)kmalloc(0x10000);
-				if(!leak) { xiv::printf("Allocation failed\n"); break; }
-				leak[0] = 0xaa;
-				}
-				mem::debug(3);
 				break;
 			case 'p':
 				mem::debug(1);
@@ -288,6 +283,9 @@ void handle_key() {
 		} else if(cmdx >= 3) {
 			if(!memeq(cmd, "arp", 3)) net::debug_arp();
 			if(!memeq(cmd, "pkt", 3)) net::debug_packet();
+			if(!memeq(cmd, "die", 3)) {
+				*((uint32_t*)0x80000000) = 0;
+			}
 			if(!memeq(cmd, "eth", 3)) hw::ethdev->debug_cmd(cmd + 3, cmdx - 3);
 			if(!memeq(cmd, "acpi", 4)) acpi::debug_acpi(cmd + 4, cmdx - 4);
 			if((cmdx == 6) && (memeq(cmd, "serial", 6) == 0)) {
@@ -300,16 +298,65 @@ void handle_key() {
 		cmdl = cmdx;
 		cmdx = 0;
 	}
-	nxf = _ivix_int_f + 100;
+	nxf = _iv_int_f + 100;
 	flk = true;
 	if(fbt) fbt->putat(svt->getcol(), svt->getrow(), '_');
 }
 
 xiv::VTCell static_vt_buffer[240*128];
 
+void kernel_loop() {
+	uint32_t last_timer = hw::CMOS::instance.timer;
+	while(true) {
+		auto &cmos = hw::CMOS::instance;
+		if(last_timer != cmos.timer) {
+			last_timer = cmos.timer;
+			fbt_status->setto(0, 1);
+			xiv::iprintf(fbt_status, "RTC: %02d:%02d:%02d d%d m%d y%04d up:%d\n",
+				cmos.hour, cmos.minute, cmos.second,
+				cmos.monthday, cmos.month, cmos.year, cmos.timer);
+		}
+		_ix_halt();
+	}
+}
+void kernel_net_loop() {
+	while(true) {
+		hw::ethdev->processqueues();
+		net::runsched();
+		_ix_halt();
+	}
+}
+extern "C" uint32_t _kernel_test_eq();
+void kernel_cli_loop() {
+	nxf = _iv_int_f + 40; // TODO proper Timers!
+	while(true) {
+		if(_iv_int_f > nxf) {
+			nxf = _iv_int_f + 250;
+			flk =! flk;
+			if(fbt) {
+				fbt->putat(svt->getcol(), svt->getrow(), flk?'_':' ');
+			}
+		}
+		psys->handle();
+		if(psys->waiting()) {
+			psys->handle();
+		}
+		if(mou1->status & 0x80) {
+			mou1->status &= 0x7f;
+			if(vid) {
+				uint32_t *cur = vid + ((vid_stride / 4) * mou1->y) + mou1->x;
+				cur[0] = 0xffffff;
+			}
+		}
+		if(kb1->has_key()) {
+			handle_key();
+		}
+		_ix_halt();
+	}
+}
+
 extern "C" void _kernel_main() {
 	using namespace xiv;
-	uint32_t k = 0;
 	xiv::txtout = &lvga;
 	const char *border_str = "**************************************";
 	printf("%s%s\n xivix Text mode hello\n%s%s\n",border_str,border_str,border_str,border_str);
@@ -326,8 +373,6 @@ extern "C" void _kernel_main() {
 	//xiv::txtout = svt;
 	printf("Fetching VBE\n");
 	VBEModeInfo *vidinfo = reinterpret_cast<VBEModeInfo*>(0xc0001200);
-	uint32_t *vid = nullptr;
-	uint32_t vid_stride = 0;
 	if(vidinfo->phys_base) {
 		printf("Mapping video pages...\n");
 		uint64_t pbase = vidinfo->phys_base;
@@ -365,12 +410,14 @@ extern "C" void _kernel_main() {
 
 	printf("  XIVIX kernel hello!\n");
 	pfinit();
+	scheduler.init(); // this has to go before any interrupts
 	acpi::load_acpi(); // TODO: move this to directly after mem::initialize
 	//_ix_totalhalt();
+
 	hw::init();
 
 	printf("Scanning PS/2\n");
-	hw::PS2 *psys = new hw::PS2();
+	psys = new hw::PS2();
 	kb1 = new hw::Keyboard();
 	kb1->lastkey2 = 0xffff;
 	psys->add_kbd(kb1);
@@ -388,47 +435,18 @@ extern "C" void _kernel_main() {
 
 	net::init();
 
+	scheduler.start(kernel_loop);
+	scheduler.start(kernel_cli_loop);
+	scheduler.start(kernel_net_loop);
+
 	printf("Command loop start\n");
 	cmd = (char*)kmalloc(cmdlen);
 
-	nxf = _ivix_int_f + 40; // TODO proper Timers!
 
-	uint32_t last_timer = hw::CMOS::instance.timer;
 	while(true) {
-		if(_ivix_int_f > nxf) {
-			nxf = _ivix_int_f + 250;
-			flk =! flk;
-			if(fbt) {
-				fbt->putat(svt->getcol(), svt->getrow(), flk?'_':' ');
-			}
-		}
-		auto &cmos = hw::CMOS::instance;
-		if(last_timer != cmos.timer) {
-			last_timer = cmos.timer;
-			fbt_status->setto(0, 0);
-			xiv::iprintf(fbt_status, "RTC: %02d:%02d:%02d d%d m%d y%04d\n",
-				cmos.hour, cmos.minute, cmos.second,
-				cmos.monthday, cmos.month, cmos.year);
-		}
-		// these run periodic tasks, but all have different names
+		// run periodic tasks
 		// owo
-		hw::ethdev->processqueues();
-		net::runsched();
-		psys->handle();
-		if(psys->waiting()) {
-			psys->handle();
-			k++;
-		}
-		if(mou1->status & 0x80) {
-			mou1->status &= 0x7f;
-			if(vid) {
-				uint32_t *cur = vid + ((vid_stride / 4) * mou1->y) + mou1->x;
-				cur[0] = 0xffffff;
-			}
-		}
-		if(kb1->has_key()) {
-			handle_key();
-		}
+		scheduler.run();
 		_ix_halt();
 	}
 	_ix_totalhalt();

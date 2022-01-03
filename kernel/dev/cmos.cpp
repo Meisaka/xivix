@@ -48,17 +48,17 @@ enum RTC_B_FLAGS {
 };
 constexpr uint8_t RTCD_BATT_SENSE = 0x80;
 
-static void cmos_irq(void *u, uint32_t, ixintrctx*) {
+static void cmos_irq(void *u, uint32_t, IntCtx*) {
 	if(u) ((CMOS*)u)->irq();
 }
 
 void CMOS::init_configure(uint16_t base_addr, uint8_t irq, uint8_t cent) {
 	io_base = base_addr;
 	this->century_reg = cent;
-	ivix_interrupt[irq].rlocal = this;
-	ivix_interrupt[irq].entry = cmos_irq;
-	ivix_interrupt[32 + irq].rlocal = this;
-	ivix_interrupt[32 + irq].entry = cmos_irq;
+	iv_interrupt[irq].rlocal = this;
+	iv_interrupt[irq].entry = cmos_irq;
+	iv_interrupt[32 + irq].rlocal = this;
+	iv_interrupt[32 + irq].entry = cmos_irq;
 }
 
 void CMOS::add_second() {
@@ -73,7 +73,7 @@ void CMOS::add_second() {
 	}
 	monthday++;
 	uint32_t month_flag = 1 << (month);
-	uint32_t days_in_month = 30 + (0b101011010101 & month_flag);
+	uint32_t days_in_month = 30 + (0b1010110101010 & month_flag);
 	if(month == 2) {
 		uint8_t leap = ((year & 3) == 0) ? 1 : 0;
 		uint32_t mod_year = (year % 100);
@@ -122,15 +122,15 @@ bool CMOS::init() {
 	//b_reg |= RTCB_SQW_INT;
 	write(RTC_STATUS_B, b_reg); // enable RTC interrupt
 	read(RTC_STATUS_C);
-	uint32_t timeout = _ivix_int_n + 1200;
+	uint32_t timeout = _iv_int_n + 1200;
 	bool update_ok = false;
-	for(uint32_t i = 0; i < 0x100000 && _ivix_int_n < timeout; i++) { // wait until Update
+	for(uint32_t i = 0; i < 0x100000 && _iv_int_n < timeout; i++) { // wait until Update
 		if(read(RTC_STATUS_A) & RTCA_UIP) { update_ok = true; break; }
 		asm("pause");
 	}
 	// wait for update to finish
-	timeout = _ivix_int_n + 500;
-	for(uint32_t i = 0; (read(RTC_STATUS_A) & RTCA_UIP) && i < 0x100000 && _ivix_int_n < timeout; i++) {
+	timeout = _iv_int_n + 500;
+	for(uint32_t i = 0; (read(RTC_STATUS_A) & RTCA_UIP) && i < 0x100000 && _iv_int_n < timeout; i++) {
 		asm("pause");
 	}
 	uint16_t century;

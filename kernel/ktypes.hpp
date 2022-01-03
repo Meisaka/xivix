@@ -80,6 +80,7 @@ public:
 };
 
 int memeq(const void * ptra, const void * ptrb, size_t l);
+extern "C" void memset(void * dest, int, size_t l);
 
 #endif
 

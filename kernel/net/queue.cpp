@@ -104,13 +104,13 @@ table_set:
 struct Timer { // TODO move and expand this!
 	uint32_t next;
 	bool expired() const {
-		return ((int)_ivix_int_n - (int)next) >= 0;
+		return ((int)_iv_int_n - (int)next) >= 0;
 	}
 	void add(uint32_t t) {
 		next += t;
 	}
 	void fromnow(uint32_t t) {
-		next = _ivix_int_n + t;
+		next = _iv_int_n + t;
 	}
 };
 Timer arp_tc;

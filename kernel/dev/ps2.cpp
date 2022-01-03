@@ -17,27 +17,27 @@ void _ix_totalhalt();
 }
 namespace hw {
 
-void PS2::irq1_signal(void *u, uint32_t, ixintrctx*) {
+void PS2::irq1_signal(void *u, uint32_t, IntCtx*) {
 	if(u) ((PS2*)u)->irq1_handle();
 }
-void PS2::irq12_signal(void *u, uint32_t, ixintrctx*) {
+void PS2::irq12_signal(void *u, uint32_t, IntCtx*) {
 	if(u) ((PS2*)u)->irq12_handle();
 }
 PS2::PS2() {
 	kmd_l = 0;
 	err_n = 0;
 	// XXX possible bug: if both IRQs don't fire, the PS2 driver may hang
-	ivix_interrupt[32+1].rlocal = this;
-	ivix_interrupt[32+1].entry = PS2::irq1_signal;
-	ivix_interrupt[32+12].rlocal = this;
-	ivix_interrupt[32+12].entry = PS2::irq12_signal;
+	iv_interrupt[32+1].rlocal = this;
+	iv_interrupt[32+1].entry = PS2::irq1_signal;
+	iv_interrupt[32+12].rlocal = this;
+	iv_interrupt[32+12].entry = PS2::irq12_signal;
 	kb_drv = nullptr;
 	mou_drv = nullptr;
 	for(unsigned i = 0; i < 4; i++) {
 		port[i] = {
 			PS2ST::INIT,
 			PS2TYPE::QUERY,
-			_ivix_int_n + 20,
+			_iv_int_n + 20,
 			0,
 			nullptr
 		};
@@ -101,11 +101,11 @@ static void ps2_wait_fwrite() {
 }
 static void ps2_wait_write() {
 	uint8_t sb;
-	uint32_t kw = _ivix_int_n + 5;
+	uint32_t kw = _iv_int_n + 5;
 	do { sb = _ix_inb(0x64);
 	}
 	while(
-		(_ivix_int_n < kw) &&
+		(_iv_int_n < kw) &&
 		(sb & 2) && (~sb & 0xc0)
 	);
 }
@@ -206,8 +206,8 @@ bool PS2::init() {
 	send_data(0xff);
 
 	{
-	uint32_t d = _ivix_int_n + 20;
-	while( !(interupted & 2) && (d > _ivix_int_n) ) {
+	uint32_t d = _iv_int_n + 20;
+	while( !(interupted & 2) && (d > _iv_int_n) ) {
 	}
 	if(interupted & 2) {
 		err_n |= 0x200;
@@ -278,8 +278,8 @@ void PS2::remove_client(MultiPortClient *c, uint32_t u) {
 
 bool PS2::waiting() {
 	if( keycount || interupted ) return true;
-	return (_ivix_int_n > port[0].nextcheck)
-		|| (_ivix_int_n > port[1].nextcheck);
+	return (_iv_int_n > port[0].nextcheck)
+		|| (_iv_int_n > port[1].nextcheck);
 }
 void PS2::signal_loss(uint32_t u) {
 	remove_client(port[u].cl_ptr, u);
@@ -309,7 +309,7 @@ void PS2::handle() {
 		case PS2ST::INIT:
 			break;
 		case PS2ST::LOST:
-			port[i].nextcheck = _ivix_int_n + 50;
+			port[i].nextcheck = _iv_int_n + 50;
 			if(c == 0xEE) {
 				port[i].err_c = 0;
 				port[i].status = PS2ST::IDENT;
@@ -347,13 +347,13 @@ void PS2::handle() {
 			break;
 		case PS2ST::IDLE:
 			port[i].status = PS2ST::BUSY;
-			port[i].nextcheck = _ivix_int_n + 500;
+			port[i].nextcheck = _iv_int_n + 500;
 			if(port[i].cl_ptr) {
 				port[i].cl_ptr->port_data(cast<uint8_t>(c));
 			}
 			break;
 		case PS2ST::BUSY:
-			port[i].nextcheck = _ivix_int_n + 500;
+			port[i].nextcheck = _iv_int_n + 500;
 			if(port[i].cl_ptr) {
 				port[i].cl_ptr->port_data(cast<uint8_t>(c));
 			}
@@ -361,14 +361,14 @@ void PS2::handle() {
 		case PS2ST::IDENT:
 		case PS2ST::IDENTE:
 			{
-				port[i].nextcheck = _ivix_int_n + 1000;
+				port[i].nextcheck = _iv_int_n + 1000;
 			PS2TYPE dettype = port[i].type;
 			PS2ST nextst, idst, id1st;
 			if(port[i].status == PS2ST::IDENTE) {
 				nextst = PS2ST::IDLE;
 				idst = PS2ST::IDENTE;
 				id1st = PS2ST::IDENTE1;
-				port[i].nextcheck = _ivix_int_n + 1000;
+				port[i].nextcheck = _iv_int_n + 1000;
 			} else {
 				nextst = PS2ST::INIT;
 				idst = PS2ST::IDENT;
@@ -403,7 +403,7 @@ void PS2::handle() {
 			break;
 		case PS2ST::IDENT1:
 		case PS2ST::IDENTE1:
-			port[i].nextcheck = _ivix_int_n + 250;
+			port[i].nextcheck = _iv_int_n + 250;
 			if(PS2TYPE::KEYBOARD != port[i].type) {
 				port[i].status = PS2ST::INIT;
 				port[i].type = PS2TYPE::KEYBOARD;
@@ -424,7 +424,7 @@ void PS2::handle() {
 	for(unsigned i = 0; i < 2; i++) {
 		uint32_t f = 1 << i;
 		if(port[i].status == PS2ST::DISABLE) {
-			port[i].nextcheck = _ivix_int_n + 1000;
+			port[i].nextcheck = _iv_int_n + 1000;
 			continue;
 		} else if(port[i].status == PS2ST::INIT) {
 			switch(port[i].type) {
@@ -449,9 +449,9 @@ void PS2::handle() {
 				break;
 			}
 		}
-		if(_ivix_int_n > port[i].nextcheck) {
+		if(_iv_int_n > port[i].nextcheck) {
 			if( (interupted&f) ) interupted &= ~f;
-			port[i].nextcheck = _ivix_int_n + 750;
+			port[i].nextcheck = _iv_int_n + 750;
 			switch(port[i].status) {
 			case PS2ST::IDLE:
 				if(!ps2_can_write()) break;
@@ -463,18 +463,18 @@ void PS2::handle() {
 				}
 				break;
 			case PS2ST::BUSY:
-				port[i].nextcheck = _ivix_int_n + 500;
+				port[i].nextcheck = _iv_int_n + 500;
 				port[i].status = PS2ST::IDLE;
 				break;
 			case PS2ST::LOST:
 				if(!ps2_can_write()) break;
-				port[i].nextcheck = _ivix_int_n + 500;
+				port[i].nextcheck = _iv_int_n + 500;
 				port[i].type = PS2TYPE::QUERY;
 				port_send(0xF2, i); // ident
 				port[i].status = PS2ST::IDENT;
 				break;
 			case PS2ST::IDENT:
-				port[i].nextcheck = _ivix_int_n + 500;
+				port[i].nextcheck = _iv_int_n + 500;
 				port[i].status = PS2ST::LOST;
 				break;
 			case PS2ST::IDENT1:
@@ -483,7 +483,7 @@ void PS2::handle() {
 				break;
 			case PS2ST::IDENT2:
 				xiv::printf("PS2: port %d IDENT2 timeout\n", i+1);
-				port[i].nextcheck = _ivix_int_n + 500;
+				port[i].nextcheck = _iv_int_n + 500;
 				port[i].status = PS2ST::LOST;
 				break;
 			default:
