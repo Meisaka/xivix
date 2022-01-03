@@ -411,12 +411,12 @@ _ixe_SS:
 _ixe_GP:
 	push $0
 	pusha
+	movw $0x1C00+'G', %ax
+	call _ix_regdump
 	mov %esp, %eax
 	push %eax
 	add $0x24, %eax
 	push %eax
-	movw $0x1C00+'G', %ax
-	call _ix_regdump
 	movw $0x1C00+'P', %ax
 	movw %ax, 0xC00B8084
 	call _ix_totalhalt
@@ -528,31 +528,30 @@ _ix_exhload: # eax = Ex index, edx = context pointer
 _ix_apic_irq:
 	push $0
 	pusha
-	mov %esp, %edx	# registers
+	mov %esp, %ebp	# registers and interrupt context
 	# check interrupt table for IRQ number
 	mov 0x24(%esp), %eax	# interrupt number
 	lea iv_interrupt(,%eax,8), %esi	# IntrDef structure
 	mov (%esi), %ebx	# ->entry (function ptr)
 	test %ebx, %ebx
 	je 1f	# if it has no handler, skip and return
-	push %edx	# pointer to registers
+	push %ebp	# pointer to registers
 	push %eax	# our interrupt number
 	movl 4(%esi), %eax	# ->rlocal (void *)
 	push %eax
 	call *%ebx
 	add $12, %esp	# clean up handler stack
-1:	mov 0x20(%esp), %eax	# interrupt number
+1:	mov 0x20(%ebp), %eax	# interrupt number
 	cmp $0x10, %al	# if it's 0-15, call PIC EOI
 	jge 1f
 	call _ix_irq_eoi
 1:	call _apic_eoi
-	mov 0x24(%esp), %eax	# interrupt number
-	cmp $0x28, %al	# is it the timer?
-	jne 1f
-	push %esp	# attempt task switch on timer
-	call _Z24scheduler_from_interruptP6IntCtx
-	add $4, %esp	# if we didn't task switch
-1:	popa
+	mov 0x24(%ebp), %eax	# interrupt number
+	push %eax
+	push %ebp	# attempt task switch on timer
+	call scheduler_from_interrupt
+	add $8, %esp	# if we didn't task switch
+	popa
 	add $8, %esp	# skip the pushed values
 	iret
 

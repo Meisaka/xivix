@@ -11,15 +11,30 @@
 struct TaskList;
 struct TaskBlock;
 
-typedef void (*TaskEntry)();
+typedef void (*TaskEntry)(void *);
+
+enum TaskState : uint32_t {
+	TASK_EMPTY,
+	TASK_NEW,
+	TASK_RUN,
+	TASK_RUNNING,
+	TASK_WAIT_INT,
+};
+
+struct TaskSlot {
+	TaskBlock *task;
+	TaskState state;
+	void init();
+};
 
 struct Scheduler {
-	TaskBlock *core_task;
-	TaskBlock *active_task;
+	TaskSlot core_task;
+	TaskSlot *active_task;
 	TaskList *task_lists;
 	void init();
 	void run();
-	void start(TaskEntry entry);
+	void start(TaskEntry entry, void *param);
+	void wake_tasks(uint32_t int_mask, uint32_t offset);
 };
 
 extern Scheduler scheduler;

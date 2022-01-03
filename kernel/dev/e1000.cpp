@@ -10,6 +10,7 @@
 #include "kio.hpp"
 #include "memory.hpp"
 #include "interrupt.hpp"
+#include "scheduler.hpp"
 
 namespace hw {
 
@@ -305,6 +306,19 @@ void e1000_intcall(void * u, uint32_t, IntCtx *) {
 	}
 }
 
+static void e1000_task(void *param) {
+	e1000 *eth = (e1000*)param;
+	wake_on_interrupt(eth->int_line);
+	while(true) {
+		eth->processqueues();
+		wait_for_interrupts();
+	}
+}
+
+void e1000_start_task(e1000 *eth) {
+	scheduler.start(e1000_task, eth);
+}
+
 uint32_t e1000::handle_int() {
 	uint32_t its = vio[0xc0];
 	_ixa_or(&lastint, its);
@@ -335,7 +349,8 @@ e1000::e1000(pci::PCIBlock &pcib) {
 	for(size_t n = 0; n < (descpage_size / sizeof(size_t)); n++) {
 		vp[n] = 0;
 	}
-	iv_interrupt[40 + pcib.info.int_line] = { .entry = e1000_intcall, .rlocal = this };
+	this->int_line = 40 + pcib.info.int_line;
+	iv_interrupt[this->int_line] = { .entry = e1000_intcall, .rlocal = this };
 }
 
 e1000::~e1000() {

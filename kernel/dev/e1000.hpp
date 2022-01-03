@@ -80,6 +80,8 @@ public:
 	uint32_t handle_int();
 };
 
+void e1000_start_task(e1000 *eth);
+
 }
 
 #endif

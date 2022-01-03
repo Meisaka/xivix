@@ -15,6 +15,7 @@ enum class HWTYPE : uint32_t {
 };
 
 struct Hardware {
+	uint32_t int_line;
 	virtual bool init() = 0;
 	virtual void remove() = 0;
 };

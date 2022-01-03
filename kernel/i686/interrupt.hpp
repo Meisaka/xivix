@@ -20,7 +20,7 @@ struct RegFile {
 	uint32_t r_edx;
 	uint32_t r_ecx;
 	uint32_t r_eax;
-};
+} __attribute__((packed));
 
 struct BaseRegisterSave {
 	uint32_t r_edi;
@@ -34,13 +34,13 @@ struct BaseRegisterSave {
 	uint32_t r_eip;
 	uint32_t r_cs;
 	uint32_t r_eflags;
-};
+} __attribute__((packed));
 
 struct IntHead {
 	uint32_t r_eip;
 	uint32_t r_cs;
 	uint32_t r_eflag;
-};
+} __attribute__((packed));
 
 struct IntCtx {
 	RegFile ir;
@@ -50,13 +50,15 @@ struct IntCtx {
 		uint32_t interrupt_index;
 	};
 	IntHead ih;
-};
+} __attribute__((packed));
 
 typedef void (*InterruptHandle)(void *, uint32_t, IntCtx *);
 typedef void (*ExceptionHandle)(void *, uint32_t, IntCtx *);
 
 //__attribute__((noreturn))
-void scheduler_from_interrupt(IntCtx *);
+extern "C" void scheduler_from_interrupt(IntCtx *, uint8_t inum);
+void wake_on_interrupt(uint8_t inum);
+void wait_for_interrupts();
 
 struct IntrDef {
 	InterruptHandle entry;

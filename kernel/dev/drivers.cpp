@@ -35,8 +35,9 @@ void instance_pci(PCIBlock &dv) {
 		case 0x105E:
 		case 0x10A4: // 82571EB (Experimental)
 			{
-				hw::NetworkMAC *neth = new hw::e1000(dv);
+				hw::e1000 *neth = new hw::e1000(dv);
 				neth->init();
+				e1000_start_task(neth);
 				if(!hw::ethdev) hw::ethdev = neth;
 			}
 			break;

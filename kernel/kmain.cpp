@@ -305,8 +305,9 @@ void handle_key() {
 
 xiv::VTCell static_vt_buffer[240*128];
 
-void kernel_loop() {
+void kernel_loop(void*) {
 	uint32_t last_timer = hw::CMOS::instance.timer;
+	wake_on_interrupt(0x28);
 	while(true) {
 		auto &cmos = hw::CMOS::instance;
 		if(last_timer != cmos.timer) {
@@ -316,19 +317,25 @@ void kernel_loop() {
 				cmos.hour, cmos.minute, cmos.second,
 				cmos.monthday, cmos.month, cmos.year, cmos.timer);
 		}
-		_ix_halt();
+		wait_for_interrupts();
+		//_ix_halt();
 	}
 }
-void kernel_net_loop() {
+void kernel_net_loop(void*) {
+	net::init();
+	wake_on_interrupt(hw::ethdev->int_line);
+	wake_on_interrupt(0x28);
 	while(true) {
-		hw::ethdev->processqueues();
 		net::runsched();
-		_ix_halt();
+		wait_for_interrupts();
 	}
 }
 extern "C" uint32_t _kernel_test_eq();
-void kernel_cli_loop() {
+void kernel_cli_loop(void*) {
 	nxf = _iv_int_f + 40; // TODO proper Timers!
+	wake_on_interrupt(0x21);
+	wake_on_interrupt(0x28);
+	wake_on_interrupt(0x2c);
 	while(true) {
 		if(_iv_int_f > nxf) {
 			nxf = _iv_int_f + 250;
@@ -351,7 +358,7 @@ void kernel_cli_loop() {
 		if(kb1->has_key()) {
 			handle_key();
 		}
-		_ix_halt();
+		wait_for_interrupts();
 	}
 }
 
@@ -433,15 +440,13 @@ extern "C" void _kernel_main() {
 
 	if(vidinfo->phys_base) fbt->render_vc(*svt);
 
-	net::init();
 
-	scheduler.start(kernel_loop);
-	scheduler.start(kernel_cli_loop);
-	scheduler.start(kernel_net_loop);
+	scheduler.start(kernel_loop, nullptr);
+	scheduler.start(kernel_cli_loop, nullptr);
+	scheduler.start(kernel_net_loop, nullptr);
 
 	printf("Command loop start\n");
 	cmd = (char*)kmalloc(cmdlen);
-
 
 	while(true) {
 		// run periodic tasks
